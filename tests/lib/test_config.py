@@ -31,10 +31,14 @@ def test_env_num_rejects_a_non_number() -> None:
 
 
 def test_env_num_rejects_a_non_finite_number() -> None:
-    # float("inf") parses where JS Number("Infinity") also parses; both must be
-    # rejected, or POLL_INTERVAL_SEC=inf becomes a monitor that never polls again.
-    with pytest.raises(ConfigError, match="N must be a number"):
-        env_num({"N": "inf"}, "N", 10)
+    # float("inf") and float("nan") both parse where a JS Number() would too, and
+    # both must be rejected: POLL_INTERVAL_SEC=inf is a monitor that never polls
+    # again, and nan is worse — it compares false against every bound, so it slips
+    # past the minimum check silently. The sign variants are here because a
+    # string-matching implementation would catch "inf" and miss "-inf"/"nan".
+    for raw in ("inf", "-inf", "infinity", "nan", "-nan"):
+        with pytest.raises(ConfigError, match="N must be a number"):
+            env_num({"N": raw}, "N", 10)
 
 
 def test_env_num_rejects_a_value_below_its_minimum() -> None:
