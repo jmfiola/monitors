@@ -1380,6 +1380,23 @@ def test_load_runner_config_requires_an_https_alert_webhook() -> None:
         )
 
 
+def test_status_url_falls_back_to_the_alert_webhook() -> None:
+    # Lives here, not in test_discord.py: the fallback is a RunnerConfig property, so a
+    # test of it exercises no transport code. Placed beside the transport it would pass
+    # against an arbitrarily broken discord.py.
+    base = {"DISCORD_WEBHOOK_URL": WEBHOOK}
+    cfg = load_runner_config(base, labels=LABELS, log_prefix="x", default_poll_interval_sec=10)
+    assert cfg.status_url == WEBHOOK
+
+    separate = load_runner_config(
+        {**base, "STATUS_WEBHOOK_URL": "https://discord.test/ops"},
+        labels=LABELS,
+        log_prefix="x",
+        default_poll_interval_sec=10,
+    )
+    assert separate.status_url == "https://discord.test/ops"
+
+
 def test_load_runner_config_validates_the_status_webhook_too() -> None:
     with pytest.raises(ConfigError, match="STATUS_WEBHOOK_URL must be an https"):
         load_runner_config(
@@ -1584,7 +1601,7 @@ def load_runner_config(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/lib/test_config.py -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 19 passed, mypy `Success`, ruff clean.
+Expected: 20 passed, mypy `Success`, ruff clean.
 
 - [ ] **Step 5: Commit**
 
@@ -1678,6 +1695,12 @@ def test_retryable_covers_rate_limits_5xx_and_unknown_but_not_a_bad_request() ->
     assert DiscordPostError("x", None).retryable is True
     assert DiscordPostError("x", 400).retryable is False
     assert DiscordPostError("x", 404).retryable is False
+    # 408 Request Timeout and 425 Too Early are in RETRYABLE_STATUS deliberately: both
+    # are transient timing signals rather than "the request's own fault", which is the
+    # distinction that decides whether the runner withholds an item's key or banks it.
+    # Pinned here so the frozenset's contents are asserted, not inferred.
+    assert DiscordPostError("x", 408).retryable is True
+    assert DiscordPostError("x", 425).retryable is True
 
 
 async def test_post_accepts_any_client_with_the_right_shape() -> None:
@@ -1790,19 +1813,6 @@ def test_recovery_alert_matches_melanzanas_wording_and_never_pings() -> None:
     assert embed.color == GREEN
     assert embed.footer_text == "Liveness alert."
 
-
-def test_status_url_falls_back_to_the_alert_webhook() -> None:
-    base = {"DISCORD_WEBHOOK_URL": WEBHOOK}
-    cfg = load_runner_config(base, labels=LABELS, log_prefix="x", default_poll_interval_sec=10)
-    assert cfg.status_url == WEBHOOK
-
-    separate = load_runner_config(
-        {**base, "STATUS_WEBHOOK_URL": "https://discord.test/ops"},
-        labels=LABELS,
-        log_prefix="x",
-        default_poll_interval_sec=10,
-    )
-    assert separate.status_url == "https://discord.test/ops"
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1999,7 +2009,7 @@ def format_delivery_failure(labels: OpsLabels, status_code: int, item_count: int
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/lib/test_discord.py -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 12 passed, mypy `Success`, ruff clean. Also confirm the library still has no httpx dependency — `grep -r httpx lib/` must return nothing:
+Expected: 11 passed, mypy `Success`, ruff clean. Also confirm the library still has no httpx dependency — `grep -r httpx lib/` must return nothing:
 
 ```bash
 # Anchored to real import statements. A bare `grep httpx lib/` is a false positive:
@@ -5265,8 +5275,8 @@ Record in the commit body or a follow-up note: the observed resident memory agai
 | `tests/lib/test_timing.py` | 7 |
 | `tests/lib/test_state.py` | 9 |
 | `tests/lib/test_health.py` | 13 |
-| `tests/lib/test_config.py` | 19 |
-| `tests/lib/test_discord.py` | 12 |
+| `tests/lib/test_config.py` | 20 |
+| `tests/lib/test_discord.py` | 11 |
 | `tests/lib/test_runner_tick.py` | 14 |
 | `tests/lib/test_runner_liveness.py` | 9 |
 | `tests/lib/test_runner_forever.py` | 8 |
