@@ -14,6 +14,7 @@ force the library to be redesigned.
 **In scope**
 
 - This repo (`monitors`), holding the shared library and the apps.
+- `infra/` — the Terraform root, already moved here.
 - `lib/monitor` — the shared library.
 - `apps/melanzana` — melanzana ported from TypeScript to Python.
 - Replacing konlet with systemd units for **both** monitors, with per-container
@@ -65,6 +66,7 @@ job.
 ```
 monitors/
 ├── pyproject.toml              uv workspace; lib and apps are members
+├── infra/                      Terraform root for the shared host
 ├── lib/monitor/
 │   ├── state.py                load_keys / save_keys
 │   ├── timing.py               with_jitter / next_backoff
@@ -78,7 +80,7 @@ monitors/
     └── main.py                 wires a Monitor to run_forever()
 ```
 
-Terraform stays in `melanzana-monitor/infra` for now. See
+`infra/` holds the Terraform root for the shared host. See
 [Terraform state](#terraform-state).
 
 ## Toolchain
@@ -271,10 +273,13 @@ directory already matches that convention.
 
 ### Terraform state
 
-The Terraform root stays at `melanzana-monitor/infra` for this change. Moving it
-into this repo means moving local state, and two roots managing one instance is
-dangerous. That move is a separate step whose only change is location, and
-copying the state file is the repo owner's action.
+State is a local file at `infra/terraform.tfstate`, alongside `terraform.tfvars`.
+Both are gitignored; state stores secrets in plaintext, and losing it costs
+melanzana's baseline, which would re-alert its entire backlog to a real channel.
+Back it up outside the repo before any operation that touches it.
+
+Only one Terraform root may exist. Two roots sharing one state means a stray
+`apply` or `destroy` from the wrong directory is catastrophic.
 
 ### Why not Compose
 
