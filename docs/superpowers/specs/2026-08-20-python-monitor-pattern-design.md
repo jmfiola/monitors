@@ -377,7 +377,9 @@ Not covered by parity: log line wording.
 - An external dead-man's-switch. A resident app reports its own inability to
   poll, but a dead process or a dead VM is invisible, and silence is
   indistinguishable from "nothing new."
-- Deleting the retired `melanzana-monitor` project. Its instance is stopped and
-  its 30 GB disk still counts against the billing account's free 30 GB, so this
-  is worth doing within days rather than weeks. Deletion is recoverable for 30
-  days, which is why it doubles as the rollback for this migration.
+- Giving melanzana its own ops channel. It posts heartbeats and stall alerts to
+  the same webhook as its slot alerts (`statusChannel=main`), so ops noise lands
+  where a human is being pinged; jeffco already has a separate one. Config only —
+  a `melanzana_status_webhook_url` and a deploy — and it matters more than the
+  heartbeat *hour* does, because it fixes the notification regardless of when the
+  heartbeat fires.
