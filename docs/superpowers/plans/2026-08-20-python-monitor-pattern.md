@@ -2458,7 +2458,7 @@ async def run_tick[Item](
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/lib/test_runner_tick.py -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 14 passed, mypy `Success`, ruff clean. If ruff reports the `noqa: BLE001` comments as *unused*, delete them — `BLE` is not in the selected rule set, and an unused suppression is noise.
+Expected: 14 passed (81 across the suite), mypy `Success`, ruff clean. ruff WILL report the `noqa: BLE001` comments as unused — `BLE` is not in the selected rules — so delete them — `BLE` is not in the selected rule set, and an unused suppression is noise.
 
 - [ ] **Step 5: Commit**
 
@@ -5285,7 +5285,7 @@ Record in the commit body or a follow-up note: the observed resident memory agai
 | `tests/melanzana/test_alert.py` | 7 |
 | `tests/melanzana/test_config.py` | 4 |
 | `tests/melanzana/test_monitor.py` | 5 |
-| **Total** | **126** |
+| **Total** | **125** |
 
 The 11 health-server assertions and the 3 `HEALTH_PORT` config tests are gone with the server, as the spec directs. Revision 2 also cut nine tests that restated the implementation or re-tested a library primitive through a second layer — a URL assertion that was a strict substring subset of the byte-identical one above it, `issubclass(SourceBusy, Exception)`, dataclass attribute access, and three melanzana config tests already covered in `tests/lib/test_config.py` — and added twenty-two covering the corrections above. The net growth is entirely in failure paths.
 
