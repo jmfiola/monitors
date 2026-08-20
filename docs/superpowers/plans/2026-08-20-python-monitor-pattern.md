@@ -111,6 +111,22 @@ monitors/
 
 2. **The method is `heartbeat_extras() -> HeartbeatExtras`, not `heartbeat_fields() -> list[Field]`.** This corrects the spec. Jeffco's heartbeat does not merely add a field when its filter finds unrecognised schools — it *replaces the footer*, `"Routine heartbeat — no action needed."` → `"If any of these are high schools, add them to HS_SCHOOLS."` The field carries the school names; the footer carries the thing to do about them. A `list[Field]` return cannot reach the footer, so the seam that exists specifically for jeffco would not have fit jeffco, and the spec's claim that these three seams prevent a later redesign would have been false for this one. `HeartbeatExtras(fields, footer_text)` is twelve lines now against a contract break across every app later. Three independent reviewers found this; it is the single most valuable correction in this revision.
 
+## Two tool facts that bit during execution
+
+Both were defects in this plan's literal test code, found by implementers and fixed here.
+
+- **`mypy --strict` implies `--no-implicit-reexport`.** Reaching through a module to
+  something it imported — `monitor.state.os`, `monitor.runner.save_state` as an attribute —
+  fails with `does not explicitly export attribute`. Use `monkeypatch`'s **string form**
+  (`monkeypatch.setattr("monitor.state.os.replace", ...)`), which mypy does not type-check
+  as an attribute access. Do not "fix" it in the library with `import os as os`: that puts
+  a test-driven idiom into production code where the next tidy-up will silently break the
+  test.
+- **ruff's isort groups `monitor` and `melanzana` with third-party imports**, because both
+  are installed into the venv by `uv sync` rather than found on a source path. The import
+  blocks written out in this plan are not authoritative about grouping — if `ruff check`
+  reports `I001`, run `uv run ruff check --fix .` and take its ordering.
+
 ## Verification commands
 
 Every task ends with these green:
@@ -738,7 +754,6 @@ from pathlib import Path
 
 import pytest
 
-import monitor.state
 from monitor.state import load_state, save_state
 
 
@@ -794,7 +809,12 @@ def test_the_new_baseline_is_staged_in_a_sibling_before_it_replaces_the_target(
     # makes a kill mid-write survivable.
     path = tmp_path / "atomic.json"
     path.write_text('["old"]', encoding="utf-8")
-    monkeypatch.setattr(monitor.state.os, "replace", lambda src, dst: None)
+    # The STRING form, not `monkeypatch.setattr(monitor.state.os, "replace", ...)`:
+    # `mypy --strict` implies --no-implicit-reexport, so reaching through the module
+    # to the `os` it imported fails with 'does not explicitly export attribute "os"'.
+    # Fixing that in the library (`import os as os`) would put a test-driven idiom into
+    # production code, where the next tidy-up would silently break this test.
+    monkeypatch.setattr("monitor.state.os.replace", lambda src, dst: None)
 
     save_state(str(path), {"new"})
 
