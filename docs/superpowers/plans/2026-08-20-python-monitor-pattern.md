@@ -1276,9 +1276,11 @@ def test_env_https_url_rejects_a_non_url_and_a_truncated_paste() -> None:
 
 
 def test_env_https_url_never_echoes_the_value() -> None:
-    # A webhook's path IS its credential, and config errors get logged.
+    # A webhook's path IS its credential, and config errors get logged. Use a
+    # rejected (non-https) URL so a raise actually happens, then check the
+    # message: an accepted URL never reaches an error message at all.
     with pytest.raises(ConfigError) as exc:
-        env_https_url("W", "https://discord.test/leaked-secret-path")
+        env_https_url("W", "http://discord.test/leaked-secret-path")
     assert "leaked-secret-path" not in str(exc.value)
 
 
