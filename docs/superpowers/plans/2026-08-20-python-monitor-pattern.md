@@ -1240,10 +1240,14 @@ def test_env_num_rejects_a_non_number() -> None:
 
 
 def test_env_num_rejects_a_non_finite_number() -> None:
-    # float("inf") parses where JS Number("Infinity") also parses; both must be
-    # rejected, or POLL_INTERVAL_SEC=inf becomes a monitor that never polls again.
-    with pytest.raises(ConfigError, match="N must be a number"):
-        env_num({"N": "inf"}, "N", 10)
+    # float("inf") and float("nan") both parse where a JS Number() would too, and
+    # both must be rejected: POLL_INTERVAL_SEC=inf is a monitor that never polls
+    # again, and nan is worse — it compares false against every bound, so it slips
+    # past the minimum check silently. The sign variants are here because a
+    # string-matching implementation would catch "inf" and miss "-inf"/"nan".
+    for raw in ("inf", "-inf", "infinity", "nan", "-nan"):
+        with pytest.raises(ConfigError, match="N must be a number"):
+            env_num({"N": raw}, "N", 10)
 
 
 def test_env_num_rejects_a_value_below_its_minimum() -> None:
@@ -1601,7 +1605,7 @@ git commit -m "Add env primitives and the runner config schema"
 
 **Interfaces:**
 - Consumes: `monitor.types` (`BLUE`, `Embed`, `Field`, `GREEN`, `HeartbeatExtras`, `OpsLabels`, `Payload`, `RED`), `monitor.health.HealthState`. **Not `monitor.config`** and **not `httpx`.**
-- Produces: `DiscordPostError(Exception)` carrying `status_code: int | None`; `HttpResponse`/`HttpClient` Protocols; `Poster = Callable[[str, Payload], Awaitable[None]]`; `StatusPoster = Callable[[Payload], Awaitable[None]]`; `RETRYABLE_STATUS: frozenset[int]`; `async post(url: str, payload: Payload, client: HttpClient) -> None`; `format_heartbeat(labels, state, now_unix, extras: HeartbeatExtras = HeartbeatExtras()) -> Payload`; `format_status_alert(kind: Literal["death", "recovery"], labels, state, now_unix) -> Payload`; `format_delivery_failure(labels, status_code: int, item_count: int) -> Payload`.
+- Produces: `_DEFAULT_HEARTBEAT_EXTRAS`; `DiscordPostError(Exception)` carrying `status_code: int | None`; `HttpResponse`/`HttpClient` Protocols; `Poster = Callable[[str, Payload], Awaitable[None]]`; `StatusPoster = Callable[[Payload], Awaitable[None]]`; `RETRYABLE_STATUS: frozenset[int]`; `async post(url: str, payload: Payload, client: HttpClient) -> None`; `format_heartbeat(labels, state, now_unix, extras: HeartbeatExtras = HeartbeatExtras()) -> Payload`; `format_status_alert(kind: Literal["death", "recovery"], labels, state, now_unix) -> Payload`; `format_delivery_failure(labels, status_code: int, item_count: int) -> Payload`.
 
 Three changes from the first draft, all of them corrections:
 
@@ -1890,11 +1894,17 @@ async def post(url: str, payload: Payload, client: HttpClient) -> None:
         )
 
 
+# ruff's B008 forbids a function call in a default expression, and a frozen
+# dataclass construction counts. One module-level instance, same value, no call
+# per invocation.
+_DEFAULT_HEARTBEAT_EXTRAS = HeartbeatExtras()
+
+
 def format_heartbeat(
     labels: OpsLabels,
     state: HealthState,
     now_unix: int,
-    extras: HeartbeatExtras = HeartbeatExtras(),
+    extras: HeartbeatExtras = _DEFAULT_HEARTBEAT_EXTRAS,
 ) -> Payload:
     """Heartbeat ops message — confirms the monitor is alive. Never pings.
 
@@ -1992,7 +2002,9 @@ Run: `uv run pytest tests/lib/test_discord.py -q && uv run mypy --strict lib tes
 Expected: 12 passed, mypy `Success`, ruff clean. Also confirm the library still has no httpx dependency — `grep -r httpx lib/` must return nothing:
 
 ```bash
-grep -rn httpx lib/ && echo "LEAKED — the transport Protocol is not doing its job" || echo "clean"
+# Anchored to real import statements. A bare `grep httpx lib/` is a false positive:
+# the library carries several comments explaining WHY httpx is not used.
+grep -rnE '^\s*(import|from) httpx' lib/ && echo "LEAKED — the Protocol is not doing its job" || echo "clean"
 ```
 
 - [ ] **Step 5: Commit**
