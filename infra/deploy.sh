@@ -14,10 +14,22 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-ZONE="$(terraform output -raw zone 2>/dev/null || echo us-west1-b)"
-INSTANCE="$(terraform output -raw instance_name 2>/dev/null || echo monitors)"
+# Resolved lazily, and guarded on empty rather than exit status: before the first
+# apply there are no outputs in state, and `terraform output -raw` answers that
+# with an empty string and a zero exit, so `|| default` never fires.
+tf_out() {
+  local value
+  value="$(terraform output -raw "$1" 2>/dev/null || true)"
+  if [[ -n $value ]]; then printf '%s' "$value"; else printf '%s' "$2"; fi
+}
 
-on_host() { gcloud compute ssh "$INSTANCE" --zone "$ZONE" --command "$1"; }
+# --project is explicit on purpose. gcloud falls back to whatever `gcloud config`
+# happens to hold, which is not necessarily the project this root manages.
+on_host() {
+  gcloud compute ssh "$(tf_out instance_name monitors)" \
+    --project "$(tf_out project_id cobs-cloud)" \
+    --zone "$(tf_out zone us-west1-b)" --command "$1"
+}
 
 verify() {
   echo "==> units"
@@ -26,10 +38,13 @@ verify() {
   on_host 'docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"'
   echo "==> memory"
   on_host 'free -m | head -2'
-  echo "==> recent output per unit"
-  on_host 'for u in $(systemctl list-units "*-monitor.service" --no-pager --no-legend | cut -d" " -f1); do
-             echo "--- $u"
-             journalctl -u "$u" -n 6 --no-pager -o cat 2>/dev/null || true
+  # `docker logs`, not `journalctl -u`: the units run docker in the foreground, so
+  # the container's stdout goes to Docker's json-file log driver rather than to
+  # journald. journalctl shows the supervisor, not the app.
+  echo "==> recent output per app"
+  on_host 'for c in $(docker ps --format "{{.Names}}"); do
+             echo "--- $c"
+             docker logs --tail 8 "$c" 2>&1 | grep -v "^$" || true
            done'
 }
 
