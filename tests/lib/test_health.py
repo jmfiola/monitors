@@ -87,3 +87,13 @@ def test_a_backwards_clock_step_does_not_fire_a_heartbeat() -> None:
     # the clock back a day must not be read as a new day.
     h = replace(init_health(DEC2_0700), last_heartbeat_unix=DEC2_0700)
     assert should_heartbeat(h, DEC1_0800, 86400, AT_0700) is False
+
+
+def test_at_hour_is_due_even_when_the_interval_has_not_elapsed() -> None:
+    # The interval is not merely overridden, it is unread: with heartbeat_at set,
+    # the only conditions are "local date advanced" and "at or past the hour". An
+    # implementation that AND-ed interval_sec into this branch would pass every
+    # other test in this file, because they all happen to have elapsed time and
+    # satisfied interval agree in sign.
+    h = replace(init_health(DEC1_0700), last_heartbeat_unix=DEC1_0700)
+    assert should_heartbeat(h, DEC2_0700, 86400 * 365, AT_0700) is True
