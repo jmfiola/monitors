@@ -1,0 +1,87 @@
+#!/bin/bash
+#
+# Brings every monitor up under systemd. GCE runs this on boot, and deploy.sh
+# re-runs it on every deploy, so everything here is idempotent.
+#
+# Rendered by Terraform from infra/templates/startup.sh.tftpl — don't edit the
+# copy in instance metadata.
+set -euo pipefail
+
+# /etc on COS is writable but not guaranteed to survive an OS update, so the env
+# and unit files are rewritten on every run by design rather than by accident.
+mkdir -p /etc/monitors
+chmod 0700 /etc/monitors
+
+# docker-credential-gcr writes its config under $DOCKER_CONFIG. The default is
+# $HOME/.docker, and with HOME unset in a startup script that resolves to
+# /.docker — on the read-only root filesystem.
+export DOCKER_CONFIG=/var/lib/docker-config
+mkdir -p "$DOCKER_CONFIG"
+docker-credential-gcr configure-docker --registries="${region}-docker.pkg.dev"
+
+# Apps whose unit or env actually changed. Deploying one app should not interrupt
+# the others, so only these get restarted at the end.
+restart_list=""
+
+%{ for name, image in images ~}
+# --- ${name} ----------------------------------------------------------------
+mkdir -p /var/lib/${name}-data
+# Containers run as non-root uid 1000 (USER node); make the volume writable first.
+chown 1000:1000 /var/lib/${name}-data
+
+# Retried: at boot this can run before the network is usable, and the first run
+# after a tag bump has no local copy of the new image to fall back on.
+for attempt in 1 2 3 4 5; do
+  docker pull ${image} && break || sleep 15
+done
+
+# The loop above always exits 0 — `sleep 15` succeeds where the pull did not — so
+# prove the image is on this host before anything is restarted. Without this, a
+# registry outage or a typo in an image_tag turns a deploy into a silent outage:
+# the old container is stopped, the new one cannot start, and the thing that
+# would raise the alert is what failed to start. Exiting here is safe because
+# every restart happens after this loop, so nothing has been disturbed yet.
+if ! docker image inspect ${image} >/dev/null 2>&1; then
+  echo "${name}: image unavailable; leaving the running container alone" >&2
+  exit 1
+fi
+
+# Render to temporary files first so the on-disk versions can be compared before
+# being replaced — that comparison is what makes the restart selective.
+new_env=$(mktemp)
+new_unit=$(mktemp)
+echo '${env_b64[name]}' | base64 -d > "$new_env"
+echo '${units_b64[name]}' | base64 -d > "$new_unit"
+
+changed=0
+cmp -s "$new_env" /etc/monitors/${name}.env || changed=1
+cmp -s "$new_unit" /etc/systemd/system/${name}-monitor.service || changed=1
+systemctl is-active --quiet ${name}-monitor.service || changed=1
+
+install -m 0600 "$new_env" /etc/monitors/${name}.env
+install -m 0644 "$new_unit" /etc/systemd/system/${name}-monitor.service
+rm -f "$new_env" "$new_unit"
+
+if [[ $changed -eq 1 ]]; then
+  restart_list="$restart_list ${name}-monitor.service"
+  echo "${name}: changed, will restart"
+else
+  echo "${name}: unchanged"
+fi
+
+%{ endfor ~}
+
+systemctl daemon-reload
+
+# Enable unconditionally (idempotent) so a reboot brings everything back, but
+# restart only what changed.
+%{ for name, image in images ~}
+systemctl enable ${name}-monitor.service >/dev/null
+%{ endfor ~}
+
+for unit in $restart_list; do
+  echo "restarting $unit"
+  systemctl restart "$unit"
+done
+
+echo "monitors: startup complete"

@@ -1,10 +1,16 @@
-# Local Terraform state — contains the webhook in plaintext. Never commit.
+# Local Terraform state — contains every webhook and the SFE PIN in plaintext.
+# Never commit. Back it up outside the repo before operations that touch it:
+# losing it costs each monitor's baseline, and a re-baseline is silent.
 *.tfstate
 *.tfstate.*
 .terraform/
 .terraform.lock.hcl
+.tfplan
 crash.log
 
-# Real variable files (the .example is committed)
+# Real variable files hold credentials. The .example is committed, and so is
+# apps.auto.tfvars — image tags are not secrets, and keeping them out of git
+# meant nothing recorded which version was actually deployed.
 *.tfvars
 !*.tfvars.example
+!apps.auto.tfvars

@@ -1,6 +1,7 @@
 variable "project_id" {
   type        = string
-  description = "GCP project ID to deploy into."
+  description = "GCP project ID. Committed deliberately: it is not a secret, and it appears in every image path anyway."
+  default     = "cobs-cloud"
 }
 
 variable "region" {
@@ -20,69 +21,76 @@ variable "zone" {
   default     = "us-west1-b"
 }
 
-variable "image_tag" {
-  type        = string
-  description = "Tag of the melanzana-monitor image to deploy (e.g. v1.1.0). Build & push to Artifact Registry before applying."
-  default     = "latest"
+###############################################################################
+# The app list. This is the file you edit to deploy, and it is committed —
+# see apps.auto.tfvars.
+#
+# `memory` is a leak backstop, not a tuning knob: it should sit well above
+# normal operation. The instance has no swap, so without a cap the kernel picks
+# the OOM victim, and it may pick a healthy monitor over the leaking one.
+#
+# Paths are derived from the key, so there is one fewer thing to get wrong per
+# app: the container and systemd unit are <key>-monitor, the data volume is
+# /var/lib/<key>-data, the env file is /etc/monitors/<key>.env, and the Artifact
+# Registry repository is <key>.
+#
+# `image` is explicit rather than derived because the two existing images do not
+# follow one rule — melanzana's is `melanzana-monitor`, jeffco's is
+# `jeffco-sub-monitor`. Inventing a convention here would mean renaming a
+# published image to satisfy a pattern.
+###############################################################################
+variable "apps" {
+  description = "Monitors to run on the host, keyed by name."
+  type = map(object({
+    image     = string
+    image_tag = string
+    memory    = string
+  }))
+
+  validation {
+    condition     = alltrue([for a in var.apps : can(regex("^[0-9]+[kmg]$", a.memory))])
+    error_message = "memory must be a Docker size string such as 128m or 1g."
+  }
+
+  validation {
+    condition     = alltrue([for a in var.apps : a.image_tag != "latest"])
+    error_message = "Use an immutable version tag, not \"latest\" — otherwise git does not record what is deployed."
+  }
 }
 
-# --- Application config (mirrors src/config.ts; only the webhook is required) ---
-
-variable "discord_webhook_url" {
+###############################################################################
+# melanzana-monitor — Cowlendar appointment slots.
+###############################################################################
+variable "melanzana_discord_webhook_url" {
   type        = string
-  description = "Discord webhook URL for slot alerts. Passed to the container as an env var (visible in TF state + instance metadata)."
+  description = "Discord webhook for slot alerts. A credential: anyone holding it can post."
   sensitive   = true
 }
 
-variable "status_webhook_url" {
+variable "melanzana_status_webhook_url" {
   type        = string
-  description = "Optional separate Discord webhook for ops messages (heartbeat/death/recovery). Empty = ops go to the main webhook."
+  description = "Optional separate Discord webhook for melanzana ops messages. Empty = use the alert channel."
   default     = ""
   sensitive   = true
 }
 
-variable "health_port" {
-  type        = number
-  description = "Optional health endpoint port. 0 = disabled (pure worker, no inbound port opened)."
-  default     = 0
-}
-
-variable "heartbeat_interval_sec" {
-  type        = number
-  description = "Heartbeat cadence in seconds (default daily). Raise to quiet the heartbeat."
-  default     = 86400
-}
-
-variable "stall_alert_sec" {
-  type        = number
-  description = "No successful poll for this long => death alert + health 503."
-  default     = 600
-}
-
-variable "window_days" {
+variable "melanzana_window_days" {
   type        = number
   description = "Rolling look-ahead window for bookable slots, in days."
   default     = 60
 }
 
-variable "mention_everyone" {
+variable "melanzana_mention_everyone" {
   type        = bool
   description = "Whether real slot alerts ping @everyone."
   default     = false
 }
 
 ###############################################################################
-# jeffco-sub-monitor — the second monitor sharing this instance.
-# Its image repository is owned by jeffco-sub-monitor/infra; only the runtime
-# configuration lives here, because this root owns the host.
+# jeffco-sub-monitor — Jeffco substitute teaching jobs.
 ###############################################################################
-variable "jeffco_image_tag" {
-  description = "Image tag for jeffco-sub-monitor. Use an immutable version tag, not \"latest\"."
-  type        = string
-}
-
 variable "jeffco_sfe_user_id" {
-  description = "SmartFindExpress access id. Sensitive: the PIN closely resembles it."
+  description = "SmartFindExpress access id. Sensitive: the PIN closely resembles it, so leaking one leaks most of the other."
   type        = string
   sensitive   = true
 }
@@ -106,19 +114,33 @@ variable "jeffco_status_webhook_url" {
   default     = ""
 }
 
-# 60, not the official web client's own 30s refresh, because the account holder
-# shares this SFE login with the monitor. Every observed HTTP 400 landed within
-# ~3 minutes after an alert went out — i.e. exactly when he opened the site to
-# claim the job — and he sees the same conflict from his side, as jobs that only
-# appear after a manual refresh. Backing off to 60s halves the share of wall
-# clock with a monitor request in flight, which is the only lever here that does
-# not require SFE to hand out a second account.
+# 60s, deliberately slower than the official SFE web client's own 30s refresh,
+# because the monitor shares one login with the substitute it watches for. SFE
+# answers HTTP 400 while a second session is active on the account, and the
+# evidence that this is what the 400s are is diurnal: across the monitor's first
+# ~59 hours, all 34 of them landed between 06:00 and midnight, with none in three
+# nights of overnight polling. He sees the same conflict from his side, as jobs
+# that only appear after a manual refresh.
 #
-# It buys that at the cost of up to 40s of extra notice delay on a listing that
-# can be gone in minutes, so this is a trade, not a free win. Do not go lower
-# while the login is shared.
+# It costs up to 40s of extra notice on a listing that can be gone in minutes, so
+# this is a trade, not a free win. Do not go lower while the login is shared.
 variable "jeffco_poll_interval_sec" {
   description = "Seconds between jeffco available-jobs polls."
   type        = number
   default     = 60
+}
+
+###############################################################################
+# Shared ops config. Applied to every app; the library reads the same names.
+###############################################################################
+variable "heartbeat_interval_sec" {
+  type        = number
+  description = "Heartbeat cadence in seconds (default daily). Raise to quiet it."
+  default     = 86400
+}
+
+variable "stall_alert_sec" {
+  type        = number
+  description = "No successful poll for this long => death alert."
+  default     = 600
 }

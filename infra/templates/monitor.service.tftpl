@@ -1,0 +1,31 @@
+[Unit]
+Description=${name} monitor
+After=docker.service
+Requires=docker.service
+
+# Stop a crash loop from hammering an upstream. These belong in [Unit], not
+# [Service] — they moved in systemd 229 and are silently ignored if misplaced.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+# Foreground `docker run`, and deliberately no `--restart=always`: systemd is the
+# supervisor here. Two supervisors contending over one container produces restart
+# behaviour that neither of them documents.
+#
+# No `--rm` either. An exited container costs no memory and keeps its logs
+# readable until the next start, which is what makes `docker logs` and the Cloud
+# Logging agent still useful after a crash.
+ExecStartPre=-/usr/bin/docker rm -f ${name}-monitor
+ExecStart=/usr/bin/docker run --name ${name}-monitor \
+    --memory=${memory} \
+    --log-opt max-size=10m --log-opt max-file=3 \
+    --env-file /etc/monitors/${name}.env \
+    --volume /var/lib/${name}-data:/data \
+    ${image}
+ExecStop=/usr/bin/docker stop ${name}-monitor
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

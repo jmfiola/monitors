@@ -1,29 +1,27 @@
+output "project_id" {
+  description = "Project the host runs in."
+  value       = var.project_id
+}
+
 output "instance_name" {
-  value       = google_compute_instance.monitor.name
-  description = "Name of the monitor VM."
+  value = google_compute_instance.host.name
 }
 
 output "zone" {
-  value       = google_compute_instance.monitor.zone
-  description = "Zone the VM runs in."
+  value = var.zone
 }
 
 output "external_ip" {
-  value       = google_compute_instance.monitor.network_interface[0].access_config[0].nat_ip
-  description = "Ephemeral external IP (outbound only; no inbound ports are opened)."
+  description = "Ephemeral outbound IP. Nothing listens on it; no inbound ports are opened."
+  value       = google_compute_instance.host.network_interface[0].access_config[0].nat_ip
 }
 
-output "image" {
-  value       = local.image
-  description = "Full Artifact Registry image reference the VM pulls."
+output "images" {
+  description = "Exactly what is deployed, per app. Also recorded in apps.auto.tfvars, which is committed."
+  value       = local.images
 }
 
-output "logs_command" {
-  value       = "gcloud compute instances get-serial-port-output ${google_compute_instance.monitor.name} --zone ${google_compute_instance.monitor.zone}"
-  description = "Quick serial-console peek (includes container stdout)."
-}
-
-output "ssh_logs_command" {
-  value       = "gcloud compute ssh ${google_compute_instance.monitor.name} --zone ${google_compute_instance.monitor.zone} --command 'docker logs $(docker ps -q --filter name=melanzana-monitor) --tail 50 -f'"
-  description = "Tail the container logs over SSH."
+output "units" {
+  description = "systemd units on the host, for `systemctl status`."
+  value       = [for k in keys(var.apps) : "${k}-monitor.service"]
 }

@@ -1,29 +1,27 @@
-# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored because
+# every value below is a credential.
+#
+# Image tags are NOT here — they live in apps.auto.tfvars, which is committed, so
+# that git records what is deployed.
+#
+# project_id, region and zone have defaults in variables.tf (cobs-cloud,
+# us-west1, us-west1-b). Override only if you mean to.
 
-# Required
-project_id          = "your-gcp-project-id"
-discord_webhook_url = "https://discord.com/api/webhooks/xxxx/yyyy"
+# --- melanzana-monitor (Cowlendar appointment slots) ---
+melanzana_discord_webhook_url = "https://discord.com/api/webhooks/xxxx/yyyy"
+# melanzana_status_webhook_url = "https://discord.com/api/webhooks/xxxx/zzzz"
+# melanzana_window_days        = 60
+# melanzana_mention_everyone   = false   # true = @everyone-ping on every slot alert
 
-# Image tag to deploy — must already be built & pushed to Artifact Registry
-# (see README.md). Use an immutable version tag in production, not "latest".
-image_tag = "v1.1.0"
-
-# Region/zone — e2-micro is only always-free in us-west1, us-central1, us-east1.
-# region = "us-west1"
-# zone   = "us-west1-b"
-
-# --- Optional app config (defaults reproduce v1 behavior) ---
-# status_webhook_url     = "https://discord.com/api/webhooks/xxxx/zzzz"  # separate ops channel
-# health_port            = 8080   # 0 = disabled
-# heartbeat_interval_sec = 86400  # daily; raise to quiet
-# stall_alert_sec        = 600
-# window_days            = 60
-# mention_everyone       = false  # set true to @everyone-ping on every slot alert
-
-# --- jeffco-sub-monitor (shares this instance) ---
-jeffco_image_tag           = "v1.0.0"
+# --- jeffco-sub-monitor (Jeffco substitute jobs) ---
+# The access id and the PIN closely resemble each other, so treat them as one
+# secret: leaking the id leaks most of the PIN.
 jeffco_sfe_user_id         = "900001"
 jeffco_sfe_pin             = "xxxxxx"
 jeffco_discord_webhook_url = "https://discord.com/api/webhooks/xxxx/yyyy"
 # jeffco_status_webhook_url = "https://discord.com/api/webhooks/xxxx/zzzz"
-# jeffco_poll_interval_sec  = 60     # seconds between polls; lower collides with dad's own session
+# jeffco_poll_interval_sec  = 60   # lower collides with the account holder's own session
+
+# --- shared ops config ---
+# heartbeat_interval_sec = 86400  # daily; raise to quiet it
+# stall_alert_sec        = 600

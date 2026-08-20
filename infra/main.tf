@@ -1,43 +1,50 @@
 ###############################################################################
-# Artifact Registry — holds the melanzana-monitor container image.
-# Build & push to it (see infra/README.md) before `terraform apply`.
+# Artifact Registry — one Docker repository per app, named after its key.
+#
+# Both repositories live here. Previously jeffco's was owned by a second
+# Terraform root in the jeffco-sub-monitor repo, which meant the host's
+# resources were split across two states for no benefit.
 ###############################################################################
-resource "google_artifact_registry_repository" "repo" {
+resource "google_artifact_registry_repository" "app" {
+  for_each = var.apps
+
   location      = var.region
-  repository_id = "melanzana"
+  repository_id = each.key
   format        = "DOCKER"
-  description   = "melanzana-monitor container images"
+  description   = "${each.key} container images"
 }
 
 ###############################################################################
-# Dedicated service account for the VM. Least-privilege: pull images, write
-# logs/metrics. No inbound access, no other cloud permissions.
+# Dedicated service account for the VM. Least privilege: pull images, write
+# logs and metrics. No inbound access, no other cloud permissions.
 ###############################################################################
 resource "google_service_account" "vm" {
-  account_id   = "melanzana-monitor-vm"
-  display_name = "melanzana-monitor VM"
+  account_id   = "monitors-vm"
+  display_name = "monitors host VM"
 }
 
-resource "google_project_iam_member" "artifact_reader" {
-  project = var.project_id
-  role    = "roles/artifactregistry.reader"
-  member  = "serviceAccount:${google_service_account.vm.email}"
-}
+# Granted at the project level rather than per repository: the host pulls every
+# app's image, so a per-repository grant would be the same access spelled N times.
+resource "google_project_iam_member" "vm" {
+  for_each = toset([
+    "roles/artifactregistry.reader",
+    "roles/logging.logWriter",
+    "roles/monitoring.metricWriter",
+  ])
 
-resource "google_project_iam_member" "log_writer" {
   project = var.project_id
-  role    = "roles/logging.logWriter"
-  member  = "serviceAccount:${google_service_account.vm.email}"
-}
-
-resource "google_project_iam_member" "metric_writer" {
-  project = var.project_id
-  role    = "roles/monitoring.metricWriter"
+  role    = each.value
   member  = "serviceAccount:${google_service_account.vm.email}"
 }
 
 ###############################################################################
-# Container-Optimized OS boot image (auto-patching, Docker preinstalled).
+# Container-Optimized OS (auto-patching, Docker preinstalled, read-only root).
+#
+# Note what is NOT set on the instance below: no `gce-container-declaration`
+# metadata and no `container-vm` label. Those drive konlet, which supervises
+# exactly one container per instance — the reason this host previously ran one
+# monitor under konlet and the other from a hand-rolled `docker run`. systemd
+# supervises all of them uniformly instead.
 ###############################################################################
 data "google_compute_image" "cos" {
   family  = "cos-stable"
@@ -45,85 +52,64 @@ data "google_compute_image" "cos" {
 }
 
 locals {
-  image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/melanzana-monitor:${var.image_tag}"
+  images = {
+    for k, a in var.apps : k => "${var.region}-docker.pkg.dev/${var.project_id}/${k}/${a.image}:${a.image_tag}"
+  }
 
-  # Always-set env. STATE_PATH points at the mounted /data volume so state
-  # survives container restarts and VM reboots.
-  base_env = [
-    { name = "DISCORD_WEBHOOK_URL", value = var.discord_webhook_url },
-    { name = "STATE_PATH", value = "/data/state.json" },
-    { name = "WINDOW_DAYS", value = tostring(var.window_days) },
-    { name = "MENTION_EVERYONE", value = tostring(var.mention_everyone) },
-    { name = "HEARTBEAT_INTERVAL_SEC", value = tostring(var.heartbeat_interval_sec) },
-    { name = "STALL_ALERT_SEC", value = tostring(var.stall_alert_sec) },
-  ]
+  # Per-app environment. Keys here must match keys in var.apps; the instance has
+  # a precondition asserting that, because the failure mode otherwise is an app
+  # starting with an empty env file, which looks like a bad password.
+  app_env = {
+    melanzana = merge(
+      {
+        DISCORD_WEBHOOK_URL    = var.melanzana_discord_webhook_url
+        STATE_PATH             = "/data/state.json"
+        WINDOW_DAYS            = tostring(var.melanzana_window_days)
+        MENTION_EVERYONE       = tostring(var.melanzana_mention_everyone)
+        HEARTBEAT_INTERVAL_SEC = tostring(var.heartbeat_interval_sec)
+        STALL_ALERT_SEC        = tostring(var.stall_alert_sec)
+      },
+      var.melanzana_status_webhook_url != "" ? { STATUS_WEBHOOK_URL = var.melanzana_status_webhook_url } : {},
+    )
 
-  # Only included when set — keeps "unset = v1 behavior" intact.
-  optional_env = concat(
-    var.status_webhook_url != "" ? [{ name = "STATUS_WEBHOOK_URL", value = var.status_webhook_url }] : [],
-    var.health_port != 0 ? [{ name = "HEALTH_PORT", value = tostring(var.health_port) }] : [],
-  )
+    jeffco = merge(
+      {
+        SFE_USER_ID            = var.jeffco_sfe_user_id
+        SFE_PIN                = var.jeffco_sfe_pin
+        DISCORD_WEBHOOK_URL    = var.jeffco_discord_webhook_url
+        STATE_PATH             = "/data/state.json"
+        POLL_INTERVAL_SEC      = tostring(var.jeffco_poll_interval_sec)
+        HEARTBEAT_INTERVAL_SEC = tostring(var.heartbeat_interval_sec)
+        STALL_ALERT_SEC        = tostring(var.stall_alert_sec)
+      },
+      var.jeffco_status_webhook_url != "" ? { STATUS_WEBHOOK_URL = var.jeffco_status_webhook_url } : {},
+    )
+  }
 
-  # GCE container declaration consumed by COS. hostPath mount keeps state.json
-  # on the boot disk at /var/lib/melanzana-data (created by the startup script).
-  container_spec = {
-    spec = {
-      containers = [{
-        name  = "melanzana-monitor"
-        image = local.image
-        env   = concat(local.base_env, local.optional_env)
-        volumeMounts = [{
-          name      = "data"
-          mountPath = "/data"
-          readOnly  = false
-        }]
-        stdin = false
-        tty   = false
-      }]
-      volumes = [{
-        name = "data"
-        hostPath = {
-          path = "/var/lib/melanzana-data"
-        }
-      }]
-      restartPolicy = "Always"
-    }
+  # base64, not a nested heredoc. A heredoc body inside an interpolated Terraform
+  # template arrives carrying its own indentation, and an env-file line reading
+  # "  SFE_PIN=x" defines a variable named "  SFE_PIN" — a failure that presents
+  # as a rejected credential. The same reasoning applies to the unit files, whose
+  # `[Section]` headers must start at column zero.
+  env_b64 = {
+    for k, env in local.app_env : k => base64encode(join("\n", [for ek, ev in env : "${ek}=${ev}"]))
+  }
+
+  units_b64 = {
+    for k, a in var.apps : k => base64encode(templatefile("${path.module}/templates/monitor.service.tftpl", {
+      name   = k
+      image  = local.images[k]
+      memory = a.memory
+    }))
   }
 }
 
 ###############################################################################
-# jeffco-sub-monitor — second monitor on this instance.
-#
-# konlet supervises exactly one container and melanzana has it, so this one is
-# started from the startup script instead. Its image repository is created by
-# jeffco-sub-monitor/infra and referenced here by path rather than by resource,
-# deliberately: that root owns its own images so its builds do not depend on
-# this state.
+# The e2-micro (always-free in us-west1/central1/east1). No inbound ports are
+# opened; every monitor is an outbound poller.
 ###############################################################################
-locals {
-  jeffco_image = "${var.region}-docker.pkg.dev/${var.project_id}/jeffco/jeffco-sub-monitor:${var.jeffco_image_tag}"
-
-  jeffco_env = merge(
-    {
-      SFE_USER_ID         = var.jeffco_sfe_user_id
-      SFE_PIN             = var.jeffco_sfe_pin
-      DISCORD_WEBHOOK_URL = var.jeffco_discord_webhook_url
-      STATE_PATH          = "/data/state.json"
-      POLL_INTERVAL_SEC   = tostring(var.jeffco_poll_interval_sec)
-    },
-    var.jeffco_status_webhook_url != "" ? { STATUS_WEBHOOK_URL = var.jeffco_status_webhook_url } : {},
-  )
-
-  jeffco_env_file = join("\n", [for k, v in local.jeffco_env : "${k}=${v}"])
-}
-
-###############################################################################
-# The e2-micro instance (always-free tier in us-west1/central1/east1).
-# Runs the container via the COS container declaration; no inbound ports are
-# opened, so the health endpoint (if enabled) is reachable only on-box.
-###############################################################################
-resource "google_compute_instance" "monitor" {
-  name         = "melanzana-monitor"
+resource "google_compute_instance" "host" {
+  name         = "monitors"
   machine_type = "e2-micro"
   zone         = var.zone
 
@@ -137,84 +123,19 @@ resource "google_compute_instance" "monitor" {
 
   network_interface {
     network = "default"
-    # Ephemeral external IP — required for outbound internet (Cowlendar/Discord).
-    # This is the one real cost (~$3.60/mo for the IPv4 address).
+    # Ephemeral external IP — required for outbound internet. This is the only
+    # real line item (~$0.005/hr); the instance and disk are within the free tier.
     access_config {}
   }
 
   metadata = {
-    gce-container-declaration = yamlencode(local.container_spec)
-    google-logging-enabled    = "true"
-    # The container runs as non-root uid 1000 (USER node); make the host volume
-    # writable by it before the container starts.
-    startup-script = <<-EOT
-      #!/bin/bash
-      set -euo pipefail
-
-      # melanzana's container runs as non-root uid 1000 (USER node); make the
-      # host volume writable by it before konlet starts the container. These two
-      # lines predate the second monitor and are deliberately still first.
-      mkdir -p /var/lib/melanzana-data
-      chown 1000:1000 /var/lib/melanzana-data
-
-      # --- jeffco-sub-monitor ---------------------------------------------
-      # GCE re-runs this script on every boot, so everything below is written
-      # to be idempotent. `docker run --restart=always` needs no supervisor of
-      # its own: Docker restarts always-policy containers when the daemon
-      # starts, which is also why a transient pull failure here is survivable —
-      # the container object from the previous boot comes back regardless.
-      mkdir -p /var/lib/jeffco-data
-      chown 1000:1000 /var/lib/jeffco-data
-
-      # /etc is writable on COS but it is a stateless tmpfs, so this file is
-      # rewritten every boot by design. base64, not a nested heredoc: a heredoc
-      # body inside an interpolated Terraform heredoc arrives carrying its own
-      # indentation, and an env-file line reading "  SFE_PIN=x" defines a
-      # variable named "  SFE_PIN" — a failure that looks like a bad password.
-      mkdir -p /etc/monitors
-      chmod 0700 /etc/monitors
-      install -m 0600 /dev/null /etc/monitors/jeffco.env
-      echo '${base64encode(local.jeffco_env_file)}' | base64 -d > /etc/monitors/jeffco.env
-
-      # docker-credential-gcr writes its config under $DOCKER_CONFIG. The
-      # default is $HOME/.docker, and with HOME unset in a startup script that
-      # resolves to /.docker — on the read-only root filesystem.
-      export DOCKER_CONFIG=/var/lib/docker-config
-      mkdir -p "$DOCKER_CONFIG"
-      docker-credential-gcr configure-docker --registries="${var.region}-docker.pkg.dev"
-
-      # Retried: at boot this can run before the network is usable, and the
-      # first boot after a tag bump has no local copy of the new image to fall
-      # back on.
-      for attempt in 1 2 3 4 5; do
-        docker pull ${local.jeffco_image} && break || sleep 15
-      done
-
-      # The loop above always exits 0 — `sleep 15` succeeds where the pull did
-      # not — so prove the image is actually on this host before tearing down a
-      # container that is currently working. Without this, a registry outage or
-      # a typo in jeffco_image_tag turns a redeploy into a silent outage: the
-      # old container is gone, the new one cannot start, and nothing can raise
-      # an alert because the thing that raises alerts is what failed to start.
-      if ! docker image inspect ${local.jeffco_image} >/dev/null 2>&1; then
-        echo "jeffco: image unavailable; leaving the running container alone" >&2
-        exit 1
-      fi
-
-      # --log-opt, because nothing else supplies one: /etc/docker/daemon.json sets
-      # only `tag`, so a hand-run container's json-file log grows without bound.
-      # konlet gives melanzana 500m x 3 of its own accord; this container has no
-      # supervisor to do that for it. 10m x 3 is deliberately generous against the
-      # ~9 KB/day observed (the monitor logs events, not polls), and the log lives
-      # on the 26 GB stateful partition rather than COS's 2 GB read-only root — so
-      # this is hygiene, not headroom.
-      docker rm -f jeffco-monitor 2>/dev/null || true
-      docker run -d --name jeffco-monitor --restart=always \
-        --log-opt max-size=10m --log-opt max-file=3 \
-        --env-file /etc/monitors/jeffco.env \
-        --volume /var/lib/jeffco-data:/data \
-        ${local.jeffco_image}
-    EOT
+    google-logging-enabled = "true"
+    startup-script = templatefile("${path.module}/templates/startup.sh.tftpl", {
+      region    = var.region
+      images    = local.images
+      env_b64   = local.env_b64
+      units_b64 = local.units_b64
+    })
   }
 
   service_account {
@@ -222,13 +143,17 @@ resource "google_compute_instance" "monitor" {
     scopes = ["cloud-platform"]
   }
 
-  # COS expects this label to enable the container runtime agent.
-  labels = {
-    container-vm = replace(data.google_compute_image.cos.name, ".", "-")
-  }
-
-  # Don't recreate the VM just because COS published a newer patch image.
+  # Don't recreate the VM just because COS published a newer patch image. The
+  # running instance auto-updates itself; this only stops Terraform proposing a
+  # replacement, which would destroy the boot disk and every app's state.json.
   lifecycle {
     ignore_changes = [boot_disk[0].initialize_params[0].image]
+
+    precondition {
+      condition     = length(setsubtract(keys(var.apps), keys(local.app_env))) == 0
+      error_message = "Every app in var.apps needs an entry in local.app_env. Missing: ${join(", ", setsubtract(keys(var.apps), keys(local.app_env)))}"
+    }
   }
+
+  depends_on = [google_project_iam_member.vm]
 }
