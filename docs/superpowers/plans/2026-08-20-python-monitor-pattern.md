@@ -173,6 +173,10 @@ addopts = "--strict-markers"
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+# ruff 0.8 formats Python code blocks inside Markdown. The plan and spec in docs/
+# are documents, not source: reformatting them would churn every code sample and
+# risks their nested code-fence structure.
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
