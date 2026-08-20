@@ -74,11 +74,13 @@ class Recorder:
 
     def __init__(self, fail_titles: set[str] | None = None, status: int | None = 500) -> None:
         self.posted: list[str] = []
+        self.urls: list[str] = []
         self.fail_titles = fail_titles or set()
         self.status = status
 
     async def __call__(self, url: str, payload: Payload) -> None:
         title = payload.embeds[0].title
+        self.urls.append(url)
         if title in self.fail_titles:
             if self.status is None:
                 raise RuntimeError(f"connection reset posting {title}")
@@ -265,3 +267,87 @@ async def test_a_fetch_failure_propagates() -> None:
 
     with pytest.raises(RuntimeError, match="503"):
         await drive(Broken([]), set())
+
+
+async def test_a_mixed_batch_banks_the_delivered_and_the_permanent_but_withholds_the_retryable() -> (  # noqa: E501
+    None
+):
+    # The three outcomes have to coexist in one tick, because they share one `settled`
+    # set. Without this, banking every fresh key regardless of outcome passes every
+    # other test in this file — and that is the swallow-an-item-forever direction.
+    monitor = FakeMonitor([Thing("a"), Thing("b"), Thing("c")])
+    status = StatusRecorder()
+
+    class Mixed:
+        def __init__(self) -> None:
+            self.posted: list[str] = []
+
+        async def __call__(self, url: str, payload: Payload) -> None:
+            title = payload.embeds[0].title
+            if title == "b":
+                raise DiscordPostError("HTTP 503", 503)  # retryable -> withhold
+            if title == "c":
+                raise DiscordPostError("HTTP 400", 400)  # permanent -> bank
+            self.posted.append(title)
+
+    poster = Mixed()
+    keys = await run_tick(
+        monitor,
+        make_cfg(),
+        set(),
+        is_first_run=False,
+        poster=poster,
+        post_status=status,
+        sleep=noop_sleep,
+        log=lambda _m: None,
+    )
+    assert poster.posted == ["a"]
+    assert keys == {"a", "c"}  # a delivered, c abandoned, b comes back next tick
+    assert len(status.posts) == 1  # exactly one delivery-failure alert, for c
+
+
+async def test_an_item_that_vanished_upstream_leaves_the_baseline() -> None:
+    # The baseline is rebuilt from what fetch() returned, never unioned with the old
+    # one. A union would look harmless and would mean an item that disappears and
+    # comes back is never announced again.
+    poster = Recorder()
+    keys = await drive(FakeMonitor([Thing("a")]), {"a", "gone"}, poster=poster)
+    assert keys == {"a"}
+    assert "gone" not in keys
+    assert poster.posted == []
+
+
+async def test_an_item_that_returns_after_vanishing_is_announced_again() -> None:
+    poster = Recorder()
+    keys = await drive(FakeMonitor([Thing("a")]), set(), poster=poster)
+    assert keys == {"a"} and poster.posted == ["a"]
+    # It disappears: dropped from the baseline.
+    assert await drive(FakeMonitor([]), keys, poster=Recorder()) == set()
+    # It comes back: fresh again, and announced again.
+    poster2 = Recorder()
+    assert await drive(FakeMonitor([Thing("a")]), set(), poster=poster2) == {"a"}
+    assert poster2.posted == ["a"]
+
+
+async def test_alerts_go_to_the_alert_webhook_not_the_status_channel() -> None:
+    cfg = load_runner_config(
+        {
+            "DISCORD_WEBHOOK_URL": "https://discord.test/webhook",
+            "STATUS_WEBHOOK_URL": "https://discord.test/ops",
+        },
+        labels=LABELS,
+        log_prefix="x-monitor",
+        default_poll_interval_sec=10,
+    )
+    poster = Recorder()
+    await run_tick(
+        FakeMonitor([Thing("a")]),
+        cfg,
+        set(),
+        is_first_run=False,
+        poster=poster,
+        post_status=StatusRecorder(),
+        sleep=noop_sleep,
+        log=lambda _m: None,
+    )
+    assert poster.urls == ["https://discord.test/webhook"]

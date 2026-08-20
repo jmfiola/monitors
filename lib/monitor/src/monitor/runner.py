@@ -34,6 +34,11 @@ async def run_tick[Item](
 
     A key is left out of the returned baseline — "withheld" — whenever it was not
     successfully announced and a retry might still work. Everything else is banked.
+
+    `post_status` must swallow its own errors. It is awaited from inside an exception
+    handler, so a raise there would turn a tick that polled successfully into a
+    reported poll failure — backoff, a false death alert, and a suppressed heartbeat,
+    all while alerting was merely degraded.
     """
     items = await monitor.fetch()
     current_keys = {monitor.key(item) for item in items}
@@ -71,6 +76,7 @@ async def run_tick[Item](
         return current_keys
 
     settled: set[str] = set()
+    announced: set[str] = set()
     posted = 0
     for index, message in enumerate(messages):
         # Not before the first: the overwhelmingly common tick has exactly one item,
@@ -110,16 +116,26 @@ async def run_tick[Item](
             continue
 
         settled.update(message.covers)
+        announced.update(message.covers)
         posted += 1
 
     # Any fresh key that no message settled was never announced. That includes keys
     # `render` simply omitted from its messages — banking those would swallow the
     # item silently and forever, which is the one outcome this design trades
     # everything else against.
+    attempted = {key for message in messages for key in message.covers}
+    uncovered = fresh_keys - attempted
+    if uncovered:
+        # Not a post failure, so nothing above has logged it. An app whose render
+        # drops items would otherwise retry them every tick in total silence.
+        log(
+            f"render returned no message covering {len(uncovered)} item(s); "
+            f"withholding them — this repeats every tick until render covers them"
+        )
     withheld = fresh_keys - settled
     if withheld:
         current_keys -= withheld
-    if posted:
-        log(f"posted {posted} message(s) covering {len(fresh) - len(withheld)} new item(s)")
+    if announced:
+        log(f"posted {posted} message(s) covering {len(announced)} new item(s)")
 
     return current_keys
