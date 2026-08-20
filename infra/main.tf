@@ -143,7 +143,13 @@ resource "google_compute_instance" "host" {
   # running instance auto-updates itself; this only stops Terraform proposing a
   # replacement, which would destroy the boot disk and every app's state.json.
   lifecycle {
-    ignore_changes = [boot_disk[0].initialize_params[0].image]
+    ignore_changes = [
+      boot_disk[0].initialize_params[0].image,
+      # `gcloud compute ssh` writes an ssh-keys entry into instance metadata, which
+      # this map does not declare. Without this, every plan proposes deleting it and
+      # the next SSH puts it back — and deploy.sh uses SSH on every run.
+      metadata["ssh-keys"],
+    ]
 
     precondition {
       condition     = length(setsubtract(keys(var.apps), keys(local.app_env))) == 0
