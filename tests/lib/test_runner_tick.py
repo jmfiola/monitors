@@ -269,9 +269,7 @@ async def test_a_fetch_failure_propagates() -> None:
         await drive(Broken([]), set())
 
 
-async def test_a_mixed_batch_banks_the_delivered_and_the_permanent_but_withholds_the_retryable() -> (  # noqa: E501
-    None
-):
+async def test_a_mixed_batch_banks_delivered_and_permanent_withholds_retryable() -> None:
     # The three outcomes have to coexist in one tick, because they share one `settled`
     # set. Without this, banking every fresh key regardless of outcome passes every
     # other test in this file — and that is the swallow-an-item-forever direction.
