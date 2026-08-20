@@ -179,3 +179,17 @@ def test_load_runner_config_validates_the_status_webhook_too() -> None:
             log_prefix="x",
             default_poll_interval_sec=10,
         )
+
+
+def test_status_url_falls_back_to_the_alert_webhook() -> None:
+    base = {"DISCORD_WEBHOOK_URL": WEBHOOK}
+    cfg = load_runner_config(base, labels=LABELS, log_prefix="x", default_poll_interval_sec=10)
+    assert cfg.status_url == WEBHOOK
+
+    separate = load_runner_config(
+        {**base, "STATUS_WEBHOOK_URL": "https://discord.test/ops"},
+        labels=LABELS,
+        log_prefix="x",
+        default_poll_interval_sec=10,
+    )
+    assert separate.status_url == "https://discord.test/ops"

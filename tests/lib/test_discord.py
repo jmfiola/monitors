@@ -2,7 +2,6 @@ from dataclasses import replace
 
 import httpx
 import pytest
-from monitor.config import load_runner_config
 from monitor.discord import (
     DiscordPostError,
     format_delivery_failure,
@@ -57,6 +56,12 @@ def test_retryable_covers_rate_limits_5xx_and_unknown_but_not_a_bad_request() ->
     assert DiscordPostError("x", None).retryable is True
     assert DiscordPostError("x", 400).retryable is False
     assert DiscordPostError("x", 404).retryable is False
+    # 408 Request Timeout and 425 Too Early are in RETRYABLE_STATUS deliberately:
+    # both are transient timing signals rather than "the request's own fault", which
+    # is the distinction that decides whether the runner withholds an item's key or
+    # banks it. Pinned here so the frozenset's contents are asserted, not inferred.
+    assert DiscordPostError("x", 408).retryable is True
+    assert DiscordPostError("x", 425).retryable is True
 
 
 async def test_post_accepts_any_client_with_the_right_shape() -> None:
@@ -166,17 +171,3 @@ def test_recovery_alert_matches_melanzanas_wording_and_never_pings() -> None:
     assert embed.description == "Polling succeeded again <t:2100:R>. Back to normal."
     assert embed.color == GREEN
     assert embed.footer_text == "Liveness alert."
-
-
-def test_status_url_falls_back_to_the_alert_webhook() -> None:
-    base = {"DISCORD_WEBHOOK_URL": WEBHOOK}
-    cfg = load_runner_config(base, labels=LABELS, log_prefix="x", default_poll_interval_sec=10)
-    assert cfg.status_url == WEBHOOK
-
-    separate = load_runner_config(
-        {**base, "STATUS_WEBHOOK_URL": "https://discord.test/ops"},
-        labels=LABELS,
-        log_prefix="x",
-        default_poll_interval_sec=10,
-    )
-    assert separate.status_url == "https://discord.test/ops"
