@@ -1,0 +1,43 @@
+# A virtual workspace root: no [project] of its own, just the members, the dev
+# toolchain, and one place for tool config. `uv sync` installs every member.
+[tool.uv.workspace]
+members = ["lib/monitor", "apps/melanzana"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "mypy>=1.13",
+    "ruff>=0.8",
+    # The library itself does not depend on httpx (see lib/monitor/pyproject.toml);
+    # the tests use it as a concrete client to exercise the transport Protocol.
+    "httpx>=0.28",
+]
+
+[tool.pytest.ini_options]
+# auto mode: an `async def test_` needs no per-test decorator. The runner and its
+# tests are async throughout, so the decorator would be on nearly every test.
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# ruff 0.8 formats Python code blocks inside Markdown. The plan and spec in docs/
+# are documents, not source: reformatting them would churn every code sample and
+# risks their nested code-fence structure.
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+# The library and app are installed into the venv by `uv sync`, so imports
+# resolve without a mypy_path entry.
+#
+# Deliberately no `files =`: paths are passed on the command line. A fixed list
+# would name tools/, which does not exist until Task 13, and mypy errors on a
+# missing directory rather than skipping it.
