@@ -1,16 +1,7 @@
 variable "project_id" {
   type        = string
-  description = "GCP project ID. Defaulted here rather than set in terraform.tfvars deliberately: it is not a secret, it appears in every image path anyway, and git should record which project is targeted."
+  description = "GCP project ID. Defaulted here rather than in terraform.tfvars so git records which project is targeted; it is not a secret."
   default     = "cobs-cloud"
-
-  # A stale project_id in terraform.tfvars silently overrides the default above,
-  # and the provider then builds everything in the wrong project. That happened
-  # once; only a 409 on an existing repository name caught it, which is luck
-  # rather than a safeguard. This turns the dangerous case into a loud failure.
-  validation {
-    condition     = var.project_id != "melanzana-monitor"
-    error_message = "melanzana-monitor is the retired project. Its resources are no longer in this state, so applying against it would clobber or collide with them. Remove project_id from terraform.tfvars so the default applies."
-  }
 }
 
 variable "region" {

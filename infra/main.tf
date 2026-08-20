@@ -1,9 +1,7 @@
 ###############################################################################
 # Artifact Registry — one Docker repository per app, named after its key.
 #
-# Both repositories live here. Previously jeffco's was owned by a second
-# Terraform root in the jeffco-sub-monitor repo, which meant the host's
-# resources were split across two states for no benefit.
+# Both repositories live here, so one state describes the whole host.
 ###############################################################################
 resource "google_artifact_registry_repository" "app" {
   for_each = var.apps
@@ -42,9 +40,7 @@ resource "google_project_iam_member" "vm" {
 #
 # Note what is NOT set on the instance below: no `gce-container-declaration`
 # metadata and no `container-vm` label. Those drive konlet, which supervises
-# exactly one container per instance — the reason this host previously ran one
-# monitor under konlet and the other from a hand-rolled `docker run`. systemd
-# supervises all of them uniformly instead.
+# exactly one container per instance; systemd supervises all of them uniformly.
 ###############################################################################
 data "google_compute_image" "cos" {
   family  = "cos-stable"
