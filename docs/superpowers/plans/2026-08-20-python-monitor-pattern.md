@@ -182,7 +182,10 @@ python_version = "3.13"
 strict = true
 # The library and app are installed into the venv by `uv sync`, so imports
 # resolve without a mypy_path entry.
-files = ["lib", "apps", "tests", "tools"]
+#
+# Deliberately no `files =`: paths are passed on the command line. A fixed list
+# would name tools/, which does not exist until Task 13, and mypy errors on a
+# missing directory rather than skipping it.
 ```
 
 `lib/monitor/pyproject.toml`:
@@ -1180,6 +1183,7 @@ from monitor.config import (
     env_str,
     env_time,
     load_runner_config,
+    make_log,
 )
 from monitor.types import OpsLabels
 
@@ -1271,6 +1275,11 @@ def test_env_time_raises_rather_than_ignoring_a_malformed_value() -> None:
     for raw in ("7:00", "24:00", "07:60", "0700", "morning"):
         with pytest.raises(ConfigError, match="HEARTBEAT_AT must be an HH:MM"):
             env_time({"HEARTBEAT_AT": raw}, "HEARTBEAT_AT")
+
+
+def test_make_log_stamps_every_line_with_the_app_name(capsys: pytest.CaptureFixture[str]) -> None:
+    make_log("melanzana-monitor")("started")
+    assert capsys.readouterr().out == "[melanzana-monitor] started\n"
 
 
 def test_load_runner_config_applies_defaults() -> None:
@@ -1535,7 +1544,7 @@ def load_runner_config(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/lib/test_config.py -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 17 passed, mypy `Success`, ruff clean.
+Expected: 19 passed, mypy `Success`, ruff clean.
 
 - [ ] **Step 5: Commit**
 
@@ -2716,7 +2725,7 @@ async def run_liveness(
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `uv run pytest tests/lib/test_runner_liveness.py -q`
-Expected: 10 passed.
+Expected: 9 passed.
 
 - [ ] **Step 5: Write the failing forever-loop test**
 
@@ -3147,7 +3156,7 @@ Note what is absent: no `os` (the filesystem lives in `state.py`), no `time` (th
 - [ ] **Step 8: Run everything to verify it passes**
 
 Run: `uv run pytest -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 8 passed in `test_runner_forever.py`, 77 total across the library, mypy `Success`, ruff clean.
+Expected: 8 passed in `test_runner_forever.py`, 97 total across the library, mypy `Success`, ruff clean.
 
 Then confirm the library is a closed set with no stray dependencies:
 
@@ -4301,15 +4310,16 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxxx/yyyy
 - [ ] **Step 5: Run everything to verify it passes**
 
 Run: `uv run pytest -q && uv run mypy --strict lib apps tests && uv run ruff check .`
-Expected: 4 + 5 passed in the new files, 105 total, mypy `Success`, ruff clean.
+Expected: 4 + 5 passed in the new files, 125 total, mypy `Success`, ruff clean.
 
 `mypy --strict` is also the only thing that checks `MelanzanaMonitor` actually satisfies `Monitor[Slot]`, since the protocol is structural. Make that explicit rather than incidental — add this to `monitor.py` so a signature drift fails type-checking instead of failing at runtime:
 
 ```python
-if TYPE_CHECKING:  # a compile-time assertion, no runtime cost
-    _: Monitor[Slot] = MelanzanaMonitor(
-        cast(MelanzanaConfig, None), cast(httpx.AsyncClient, None)
-    )
+# At the bottom of monitor.py. Add `from typing import TYPE_CHECKING` and
+# `from monitor.types import Monitor` to the imports.
+if TYPE_CHECKING:  # a compile-time assertion, no runtime cost, no fake arguments
+    def _assert_satisfies_protocol(m: MelanzanaMonitor) -> Monitor[Slot]:
+        return m
 ```
 
 - [ ] **Step 6: Prove the app starts and refuses bad config**
@@ -5207,17 +5217,17 @@ Record in the commit body or a follow-up note: the observed resident memory agai
 | `tests/lib/test_timing.py` | 7 |
 | `tests/lib/test_state.py` | 9 |
 | `tests/lib/test_health.py` | 12 |
-| `tests/lib/test_config.py` | 17 |
+| `tests/lib/test_config.py` | 19 |
 | `tests/lib/test_discord.py` | 12 |
 | `tests/lib/test_runner_tick.py` | 14 |
-| `tests/lib/test_runner_liveness.py` | 10 |
+| `tests/lib/test_runner_liveness.py` | 9 |
 | `tests/lib/test_runner_forever.py` | 8 |
 | `tests/melanzana/test_cowlendar.py` | 7 |
 | `tests/melanzana/test_detector.py` | 5 |
 | `tests/melanzana/test_alert.py` | 7 |
 | `tests/melanzana/test_config.py` | 4 |
 | `tests/melanzana/test_monitor.py` | 5 |
-| **Total** | **124** |
+| **Total** | **125** |
 
 The 11 health-server assertions and the 3 `HEALTH_PORT` config tests are gone with the server, as the spec directs. Revision 2 also cut nine tests that restated the implementation or re-tested a library primitive through a second layer — a URL assertion that was a strict substring subset of the byte-identical one above it, `issubclass(SourceBusy, Exception)`, dataclass attribute access, and three melanzana config tests already covered in `tests/lib/test_config.py` — and added twenty-two covering the corrections above. The net growth is entirely in failure paths.
 
