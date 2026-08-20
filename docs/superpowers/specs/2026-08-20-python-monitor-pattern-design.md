@@ -163,6 +163,32 @@ filtering, and any authentication.
 items worth tracking, so jeffco's High-School predicate and its gap logging stay
 inside jeffco. This keeps the contract at four methods instead of six.
 
+### The heartbeat fires at a configured local time
+
+`HEARTBEAT_INTERVAL_SEC` alone anchors the heartbeat to process start, so the
+hour it arrives is whatever time the last deploy happened, it re-anchors on every
+restart, and it creeps later by up to one poll interval a day. Two apps that
+restart together also start reporting at the same minute. An ops message that
+turns up at 01:05 because that is when a migration finished is not useful.
+
+So the library adds `HEARTBEAT_AT`, an `HH:MM` local time:
+
+- **Unset** — behave exactly as today, `HEARTBEAT_INTERVAL_SEC` since the last
+  heartbeat. This is what keeps melanzana's port at parity by default.
+- **Set** — due when the local date has changed since the last heartbeat *and*
+  the local time is at or past `HEARTBEAT_AT`. Both conditions are needed: the
+  date check is what stops it firing repeatedly for the rest of the day.
+
+Seeding `lastHeartbeat` to process start still means boot never emits an
+immediate heartbeat, and the worst case gap is about 25 hours — a process that
+starts an hour before `HEARTBEAT_AT` waits until the following day, because its
+seeded date is already today. That is the intended trade for a predictable hour.
+
+Interpreted in **America/Denver**, pinned rather than configurable, for the same
+reason jeffco pins it in code: making the zone an env var only creates a way to
+typo an identifier and raise on every tick forever. It is the operator's clock,
+not the watched site's, so it is right even for a source in another country.
+
 **Authentication is deliberately not in the library.** Jeffco is the only app
 with any: melanzana hits a public endpoint with no token, cookie, or session,
 and the fashionjobs source needs no cookies at all. An auth abstraction would
