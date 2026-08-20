@@ -171,7 +171,11 @@ restart, and it creeps later by up to one poll interval a day. Two apps that
 restart together also start reporting at the same minute. An ops message that
 turns up at 01:05 because that is when a migration finished is not useful.
 
-So the library adds `HEARTBEAT_AT`, an `HH:MM` local time:
+So the library adds `HEARTBEAT_AT`, an `HH:MM` local time. **The intended value
+is `07:00`** — early enough to read over coffee and still ahead of most of the day's
+job postings, so a missing heartbeat can be acted on before the window that matters.
+It is wired into Terraform only once the library reads it; adding the variable
+sooner would be config that silently does nothing.
 
 - **Unset** — behave exactly as today, `HEARTBEAT_INTERVAL_SEC` since the last
   heartbeat. This is what keeps melanzana's port at parity by default.
