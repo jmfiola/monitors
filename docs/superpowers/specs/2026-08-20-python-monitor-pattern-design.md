@@ -349,3 +349,12 @@ Not covered by parity: log line wording.
 - An external dead-man's-switch. A resident app reports its own inability to
   poll, but a dead process or a dead VM is invisible, and silence is
   indistinguishable from "nothing new."
+- Renaming anything away from `melanzana-monitor`. The instance *can* be renamed
+  in place — `gcloud compute instances set-name` on a stopped instance preserves
+  the boot disk, so both baselines survive — but Terraform treats `name` as
+  ForceNew, so it needs an out-of-band rename plus a state `rm` and `import`. It
+  is also only a partial fix: the project ID is immutable and appears in every
+  image path, every `logName`, and the service account address. The name is
+  therefore fixed properly or not at all, and "properly" means a new project with
+  Artifact Registry, IAM, images, and both monitors migrated. Do not propose an
+  instance-only rename.
