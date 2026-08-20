@@ -1,0 +1,10 @@
+# Local Terraform state — contains the webhook in plaintext. Never commit.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+
+# Real variable files (the .example is committed)
+*.tfvars
+!*.tfvars.example
