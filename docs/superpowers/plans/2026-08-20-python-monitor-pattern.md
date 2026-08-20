@@ -88,7 +88,9 @@ monitors/
 │       ├── alert.py                      day-card embed
 │       ├── monitor.py                    MelanzanaMonitor — the four contract methods
 │       └── main.py                       wires a Monitor to run_forever()
-├── tests/
+├── tests/                                __init__.py at every level: test_config.py exists
+│   │                                     under BOTH lib/ and melanzana/, and pytest's default
+│   │                                     import mode rejects two same-named test modules
 │   ├── lib/                              test_types / test_timing / test_state / test_health /
 │   │                                     test_config / test_discord / test_runner
 │   └── melanzana/
@@ -4394,8 +4396,10 @@ except Exception as err:
 
 # A real start against a temp state path. It will fail to reach Discord, which is
 # fine — what matters is the two startup lines and that it polls.
-DISCORD_WEBHOOK_URL=https://discord.test/webhook STATE_PATH=/tmp/melz-smoke.json \
-  timeout 25 uv run python -m melanzana.main; echo "exit=$?"
+# Not `timeout 25 …`: that is GNU coreutils and is absent from a stock macOS.
+(DISCORD_WEBHOOK_URL=https://discord.test/webhook STATE_PATH=/tmp/melz-smoke.json \
+  uv run python -m melanzana.main > /tmp/melz-smoke.log 2>&1 & echo $! > /tmp/melz-smoke.pid)
+sleep 22 && kill "$(cat /tmp/melz-smoke.pid)"; cat /tmp/melz-smoke.log
 ```
 
 Expected: `refused: Config error: DISCORD_WEBHOOK_URL is required`, then two `[melanzana-monitor]` startup lines, a real Cowlendar poll, `firstRun=true`, and `/tmp/melz-smoke.json` written with the current slot keys. `exit=124` is the timeout doing its job.
@@ -4807,6 +4811,7 @@ docker run --rm --platform linux/amd64 \
   -e STATE_PATH=/data/state.json \
   -v /tmp/melz-data:/data \
   --name melanzana-smoke melanzana-monitor:v2.0.0 &
+# `sleep` then `docker stop`, not `timeout` — GNU coreutils is not on a stock macOS.
 sleep 30
 docker stats --no-stream melanzana-smoke || true
 docker logs melanzana-smoke
