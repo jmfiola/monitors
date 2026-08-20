@@ -1044,6 +1044,16 @@ def test_a_process_starting_an_hour_early_waits_until_the_next_day() -> None:
     assert (DEC2_0700 - DEC1_0600) / 3600 == 25
 
 
+def test_at_hour_is_due_even_when_the_interval_has_not_elapsed() -> None:
+    # The interval is not merely overridden, it is unread: with heartbeat_at set, the
+    # only conditions are "local date advanced" and "at or past the hour". An
+    # implementation that AND-ed interval_sec into this branch would pass every other
+    # test in this file, because they all happen to have elapsed time and satisfied
+    # interval agree in sign.
+    h = replace(init_health(DEC1_0700), last_heartbeat_unix=DEC1_0700)
+    assert should_heartbeat(h, DEC2_0700, 86400 * 365, AT_0700) is True
+
+
 def test_a_backwards_clock_step_does_not_fire_a_heartbeat() -> None:
     # "The local date has changed" means advanced. An NTP correction that steps
     # the clock back a day must not be read as a new day.
@@ -1159,7 +1169,7 @@ def should_heartbeat(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/lib/test_health.py -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 12 passed, mypy `Success`, ruff clean.
+Expected: 13 passed, mypy `Success`, ruff clean.
 
 - [ ] **Step 5: Commit**
 
@@ -5242,7 +5252,7 @@ Record in the commit body or a follow-up note: the observed resident memory agai
 | `tests/lib/test_types.py` | 7 |
 | `tests/lib/test_timing.py` | 7 |
 | `tests/lib/test_state.py` | 9 |
-| `tests/lib/test_health.py` | 12 |
+| `tests/lib/test_health.py` | 13 |
 | `tests/lib/test_config.py` | 19 |
 | `tests/lib/test_discord.py` | 12 |
 | `tests/lib/test_runner_tick.py` | 14 |
@@ -5253,7 +5263,7 @@ Record in the commit body or a follow-up note: the observed resident memory agai
 | `tests/melanzana/test_alert.py` | 7 |
 | `tests/melanzana/test_config.py` | 4 |
 | `tests/melanzana/test_monitor.py` | 5 |
-| **Total** | **125** |
+| **Total** | **126** |
 
 The 11 health-server assertions and the 3 `HEALTH_PORT` config tests are gone with the server, as the spec directs. Revision 2 also cut nine tests that restated the implementation or re-tested a library primitive through a second layer — a URL assertion that was a strict substring subset of the byte-identical one above it, `issubclass(SourceBusy, Exception)`, dataclass attribute access, and three melanzana config tests already covered in `tests/lib/test_config.py` — and added twenty-two covering the corrections above. The net growth is entirely in failure paths.
 
