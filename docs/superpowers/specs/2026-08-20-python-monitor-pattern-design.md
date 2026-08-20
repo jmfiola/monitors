@@ -1,6 +1,8 @@
 # Python Monitor Pattern — Design
 
-**Status:** approved design, not yet implemented.
+**Status:** the host is built. `cobs-cloud` runs both monitors as systemd units
+with per-app memory caps and env files, provisioned from `infra/` in this repo.
+The shared library and the Python ports are not yet written.
 
 ## Goal
 
@@ -14,11 +16,13 @@ force the library to be redesigned.
 **In scope**
 
 - This repo (`monitors`), holding the shared library and the apps.
-- `infra/` — the Terraform root, already moved here.
 - `lib/monitor` — the shared library.
 - `apps/melanzana` — melanzana ported from TypeScript to Python.
-- Replacing konlet with systemd units for **both** monitors, with per-container
-  memory caps and env files instead of plaintext instance metadata.
+
+**Already built** — `infra/` provisions `cobs-cloud`: one `e2-micro` named
+`monitors`, both Artifact Registry repositories, a least-privilege service
+account, and one systemd unit per app with a memory cap and a `0600` env file.
+konlet is gone.
 
 **Not in scope**
 
@@ -245,14 +249,13 @@ directory already matches that convention.
   observed. Without a cap the kernel chooses the OOM victim, and there is no
   swap; with one, a leaking app dies instead of a healthy one.
 - **`StartLimitBurst`** stops a crash loop from hammering an upstream.
-- **Melanzana's secrets leave instance metadata.** Its Discord webhook currently
-  sits in plaintext inside `gce-container-declaration`, readable by anyone with
-  compute-viewer on the project. It moves to `/etc/monitors/melanzana.env` at
-  `0600` inside a `0700` directory, matching jeffco.
+- **No secret is in instance metadata.** Under konlet, melanzana's Discord
+  webhook sat in plaintext inside `gce-container-declaration`, readable by anyone
+  with compute-viewer. Every app's config now lives in `/etc/monitors/<app>.env`
+  at `0600` inside a `0700` directory.
 - **Image tags become committed.** Tags are not secrets. They move to a
-  committed `apps.auto.tfvars`; `terraform.tfvars` keeps only credentials. Today
-  the deployed tag exists nowhere in git, so answering "what is running" requires
-  SSH.
+  committed `apps.auto.tfvars`; `terraform.tfvars` keeps only credentials, so
+  answering "what is running" no longer requires an SSH session.
 - **`deploy.sh`** runs `terraform apply`, then
   `google_metadata_script_runner startup` over SSH, then verifies both units are
   active. A metadata change does not re-run the startup script, so the second
@@ -260,14 +263,10 @@ directory already matches that convention.
 
 ### Safety gates
 
-- **konlet does not clean up after itself.** Removing
-  `gce-container-declaration` leaves `klt-melanzana-monitor-*` running. The
-  startup script must `docker rm -f` any container matching that prefix, or an
-  orphan keeps 104 MB and double-posts alerts.
-- **The Terraform plan must read `1 to change, 0 to destroy`.** This change
-  removes a metadata key and the `container-vm` label, both of which should be
-  in-place edits. A replace would wipe the boot disk and both `state.json`
-  files, silently re-baselining both monitors.
+- **No plan may contain a delete.** `deploy.sh` reads the plan and refuses one
+  that does. A replaced instance loses the boot disk and every app's
+  `state.json`, silently re-baselining every monitor. Pure creates and updates
+  are fine.
 - **Rollback** is reverting the tag in `apps.auto.tfvars` and running
   `deploy.sh`. Rehearse it once on melanzana before jeffco's unit is touched.
 
@@ -345,16 +344,10 @@ Not covered by parity: log line wording.
 - `run_once()` and timers. Melanzana polls every 10 s, so a timer would mean
   ~8,640 container starts a day; every app is resident.
 - Hoisting jeffco's lockout guard into `timing.py`, until a second app needs it.
-- Moving Terraform into this repo.
 - An external dead-man's-switch. A resident app reports its own inability to
   poll, but a dead process or a dead VM is invisible, and silence is
   indistinguishable from "nothing new."
-- Renaming anything away from `melanzana-monitor`. The instance *can* be renamed
-  in place — `gcloud compute instances set-name` on a stopped instance preserves
-  the boot disk, so both baselines survive — but Terraform treats `name` as
-  ForceNew, so it needs an out-of-band rename plus a state `rm` and `import`. It
-  is also only a partial fix: the project ID is immutable and appears in every
-  image path, every `logName`, and the service account address. The name is
-  therefore fixed properly or not at all, and "properly" means a new project with
-  Artifact Registry, IAM, images, and both monitors migrated. Do not propose an
-  instance-only rename.
+- Deleting the retired `melanzana-monitor` project. Its instance is stopped and
+  its 30 GB disk still counts against the billing account's free 30 GB, so this
+  is worth doing within days rather than weeks. Deletion is recoverable for 30
+  days, which is why it doubles as the rollback for this migration.

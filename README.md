@@ -16,10 +16,11 @@ diffing, backoff, health, and Discord delivery.
 
 ## Status
 
-`infra/` is live: it is the Terraform root for the shared host, and both
-monitors are deployed from here. The app code has not moved yet —
-`melanzana-monitor` and `jeffco-sub-monitor` still live in their own repos and
-run from images built there.
+`infra/` is live: it is the Terraform root for the host, which runs in the
+**`cobs-cloud`** project as an instance named `monitors`. Both apps run there as
+systemd units. Their code has not moved yet — `melanzana-monitor` and
+`jeffco-sub-monitor` still live in their own repos and run from images built
+there.
 
 The shared library and the Python ports are designed but not implemented. Start
 with [the design](docs/superpowers/specs/2026-08-20-python-monitor-pattern-design.md).
