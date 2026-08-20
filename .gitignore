@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Terraform — state stores secrets in plaintext; tfvars holds credentials.
+# Image tags are deliberately NOT secret and belong in a committed
+# apps.auto.tfvars.
+*.tfstate
+*.tfstate.*
+.terraform/
+terraform.tfvars
+
+# Runtime state — each app's seen-key baseline
+state.json
+
+# Secrets
+.env
