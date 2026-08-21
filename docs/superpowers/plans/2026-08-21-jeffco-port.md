@@ -81,7 +81,7 @@ First because everything downstream reads these files, and because they currentl
 **Files:**
 - Modify: `~/personal/jeffco-sub-monitor/test/fixtures/{available-jobs,job-detail-single,job-detail-contiguous,job-detail-multiday}.json`
 - Modify: any `~/personal/jeffco-sub-monitor/test/*.test.ts` asserting a name or employee id
-- Create: `tests/jeffco/fixtures/` (the four copies), `tests/jeffco/__init__.py`
+- Create: `tests/jeffco/fixtures/` (**five** copies — the four JSON fixtures plus `login-page.html`), `tests/jeffco/__init__.py`
 
 **Interfaces:** none — data only.
 
@@ -191,7 +191,7 @@ done
 grep -rniE 'johnson|cengia|25714|22585' tests/jeffco/fixtures/ && echo "REAL DATA STILL PRESENT" || echo "no real names or ids remain"
 ```
 
-Note `login-page.html` is **not** copied: nothing in the Python port parses login HTML beyond a token regex, and the fixture exists for a TypeScript test of the redirect flow that becomes an httpx-level test here.
+**`login-page.html` IS copied** — an earlier draft of this plan said not to, on the reasoning that nothing in the Python port parses login HTML beyond a token regex. That reasoning was backwards: `extract_token` and `token_expiry_unix` are exactly that regex and that JWT, and testing them against the real page is strictly stronger than against a synthetic string. Checked before accepting it: the fixture carries no `;jsessionid=`, its bearer token expired 2026-08-14, and the JWT's `sub` claim already holds obvious placeholders (`userId: 11111`, `username: "999999"`, `clientId: "0000"`), so whoever built it already sanitised it. Add it to the `cmp` gate in Task 9 alongside the other four — both implementations read it, so byte-equality matters.
 
 - [ ] **Step 6: Commit, both repos**
 
