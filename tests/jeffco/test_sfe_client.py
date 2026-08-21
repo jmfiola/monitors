@@ -21,6 +21,7 @@ without sleeping and without patching a module global.
 
 from __future__ import annotations
 
+import inspect
 import json
 import re
 import traceback
@@ -608,3 +609,22 @@ async def test_keeps_the_pin_the_access_id_and_the_token_out_of_every_output_cha
     # Guards against the assertions above passing vacuously against an empty
     # string: the run really did produce output, and really did fail.
     assert "something went wrong" in everything
+
+
+# --- the single-funnel guard --------------------------------------------------
+
+
+def test_self_client_is_touched_from_exactly_one_place_in_the_source() -> None:
+    """Pins `_send`'s own claim: it is the only place `self._client` is touched.
+
+    An earlier revision had two of four send sites call `self._client.request`
+    directly, bypassing `_send`'s guard around `httpx.RemoteProtocolError` -- and
+    one of those two leaked a live `;jsessionid=` through the raw exception
+    message (see `_send`'s docstring). Counting call sites in the source text is
+    what a new, unguarded call site would actually add; a behavioural test could
+    only catch this by contriving every guarded path to raise, which the rest of
+    this file already does per-guard, not by construction the way this one does.
+    """
+    source = Path(inspect.getfile(SfeClient)).read_text(encoding="utf-8")
+    call_sites = re.findall(r"await self\._client\.", source)
+    assert len(call_sites) == 1

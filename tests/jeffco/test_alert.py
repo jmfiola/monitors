@@ -202,6 +202,10 @@ def test_carries_the_filter_gap_report_so_it_arrives_without_being_asked_for() -
     value = extras.fields[0].value
     assert "NEW CAMPUS HS OF SOMETHING" in value
     assert "ANOTHER PLACE" in value
+    # A school name per line only reads as a list when the field is full width;
+    # `Field.inline` defaults to True, so leaving this unpinned lets a regression
+    # squeeze the report into a column without any test noticing.
+    assert extras.fields[0].inline is False
 
 
 def test_omits_the_gap_field_entirely_when_every_school_matched() -> None:
