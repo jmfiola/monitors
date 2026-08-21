@@ -4,7 +4,7 @@ from monitor.types import GREEN, Embed, Field, Message, Payload
 
 from fashionjobs.types import FashionJob
 
-_DISCORD_ESCAPED = frozenset("\\*_`~|")
+_DISCORD_ESCAPED = frozenset("\\*_`~|[]()#>-+.!<")
 
 
 def discord_text(value: str, limit: int) -> str:
