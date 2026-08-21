@@ -260,6 +260,24 @@ look like a regression.
 4. **Key de-duplication.** jeffco keys on `jobId` alone, so duplicates are unlikely,
    but the library de-duplicates regardless.
 5. **The `"busy"` outcome**, above — the point of the library change.
+6. **An HTTP timeout exists.** `HTTP_TIMEOUT_SEC` bounds every SFE request; the
+   TypeScript sets no timeout at all, so a hung connection there stalls a tick
+   indefinitely. Found during the final review, after this list was written.
+
+**One thing that looks like a divergence and must not be "corrected".** A `jobStart`
+without a UTC offset is interpreted in the **host** timezone, not `America/Denver`.
+That is deliberate, because it is what the two implementations *agree* on — measured
+under `TZ=America/Denver`:
+
+```
+JS      Date.parse("2026-09-04T13:45")   -> 2026-09-04T19:45:00Z   (local)
+Python  fromisoformat("2026-09-04T13:45") -> 2026-09-04T13:45-06:00 (local)
+```
+
+Both treat a naive datetime as local time, so forcing UTC on the Python side would
+*create* a divergence rather than remove one. Real SFE always sends `Z`
+(`"2026-09-04T13:45Z"`), so the path is unreachable in practice — and no naive string
+appears in the harness, which is why its `TZ`-independence check cannot see this.
 
 ## Error handling
 

@@ -128,7 +128,14 @@ def format_approximate(job: Job, timezone: str) -> str:
     try:
         start_unix = int(datetime.fromisoformat(job.job_start).timestamp())
         end_unix = int(datetime.fromisoformat(job.job_end).timestamp())
-    except ValueError:
+    except (ValueError, OverflowError, OSError):
+        # ValueError is the one that actually fires. OverflowError and OSError are
+        # here because `.timestamp()` can raise them for datetimes near year 1 or
+        # 9999 on some platforms, and this function is the *degraded* path -- it
+        # runs when the detail fetch has already failed. Anything escaping it
+        # propagates out of `render()`, which withholds every fresh key in the
+        # batch and then retries the identical failure forever, so one malformed
+        # row would silence all alerting indefinitely. Catch broadly here.
         return f"Dates unavailable{tokens} — check SFE"
 
     start_day = format_day_label(start_unix, timezone)

@@ -403,7 +403,7 @@ class SfeClient:
 
         # Belt and braces with `_send`, which normally reports a malformed header
         # first because httpx parses `Location` while building the `next_request`
-        # it hands back. `urlsplit` raises ValueError on a malformed
+        # it hands back. `urlparse` raises ValueError on a malformed
         # authority; its own message does not quote the input today, but this
         # Location may carry a live `;jsessionid=`, so the parser's error is dropped
         # entirely (`from None`) rather than chained -- which keeps a foreign error
@@ -612,7 +612,20 @@ class SfeClient:
             build_available_filter(self._now_unix(), self._window_days, self._timezone),
             "available jobs",
         )
-        return parse_jobs(body)
+        jobs = parse_jobs(body)
+        # A partial drop is otherwise completely silent. `parse_jobs` tolerates a
+        # malformed row on purpose so one bad row cannot lose a whole poll, and it
+        # raises when *every* row fails -- but in between, a job with (say) a null
+        # jobEnd is never announced, never logged, and cannot even reach the
+        # heartbeat's gap report, which only covers rows that parsed. Every signal
+        # would say healthy while a real job went unmentioned. The count is the only
+        # place that difference is visible, so say it out loud.
+        if isinstance(body, list) and len(jobs) < len(body):
+            self._log(
+                f"warning: dropped {len(body) - len(jobs)} of {len(body)} available-jobs "
+                "row(s) that failed field validation; those jobs cannot be announced"
+            )
+        return jobs
 
     async def fetch_job_detail(self, job_id: int) -> object:
         """Detail for one job. Verified to return 200 even for a job already

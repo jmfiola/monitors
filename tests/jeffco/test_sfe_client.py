@@ -238,6 +238,31 @@ async def test_replays_cookies_gathered_across_the_handshake_onto_the_api_call()
     assert "AWSALB=init" not in cookie
 
 
+async def test_a_partially_dropped_response_says_so_instead_of_alerting_less_quietly() -> None:
+    # parse_jobs tolerates a malformed row on purpose, so one bad row cannot lose a
+    # whole poll, and it raises when EVERY row fails. In between, the drop used to be
+    # invisible: a job with a null jobEnd is never announced, never logged, and cannot
+    # reach the heartbeat's gap report either, because that only covers rows that
+    # parsed. Every signal reads healthy while a real job goes unmentioned -- and a
+    # missed job costs a real person a day's work.
+    good = dict(AVAILABLE_JOBS[0])
+    broken = {**good, "jobId": 999999, "jobEnd": None}
+    async with client([*login_responses(), json_response([good, broken])]) as h:
+        jobs = await h.sfe.fetch_available_jobs()
+
+    assert len(jobs) == 1  # the good row still gets through
+    assert h.logged(r"dropped 1 of 2")
+    assert h.logged(r"cannot be announced")
+
+
+async def test_a_fully_parsed_response_logs_no_drop_warning() -> None:
+    # The other half: the warning must not cry wolf on a clean response, or it becomes
+    # noise that gets filtered out and stops being read.
+    async with client([*login_responses(), json_response(AVAILABLE_JOBS)]) as h:
+        await h.sfe.fetch_available_jobs()
+    assert not h.logged(r"dropped")
+
+
 async def test_reuses_the_token_across_calls_instead_of_logging_in_every_time() -> None:
     async with client(
         [*login_responses(), json_response(AVAILABLE_JOBS), json_response(JOB_DETAIL)]

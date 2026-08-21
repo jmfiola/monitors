@@ -318,7 +318,12 @@ async def run_forever[Item](
         f"firstRun={first_run} "
         f"statusChannel={'separate' if cfg.status_webhook_url else 'main'} "
         f"heartbeat={cfg.heartbeat_interval_sec}s "
-        f"heartbeatAt={_format_at(cfg.heartbeat_at)} stall={cfg.stall_alert_sec}s"
+        f"heartbeatAt={_format_at(cfg.heartbeat_at)} stall={cfg.stall_alert_sec}s "
+        # busyStall governs jeffco's single commonest failure -- the account being
+        # in use by its owner -- and deciding whether a quiet hour is expected or
+        # alarming needs the threshold that was actually in force. It is not wired
+        # into Terraform on purpose, which makes the log the only place to see it.
+        f"busyStall={cfg.busy_stall_alert_sec}s"
     )
 
     async def post_status(payload: Payload) -> None:
