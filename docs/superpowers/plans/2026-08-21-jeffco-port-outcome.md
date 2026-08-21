@@ -6,25 +6,25 @@ the reasoning survives the scratch workspace it was recorded in.
 
 **Shipped:** `apps/jeffco` (the jeffco substitute-teaching monitor ported from TypeScript
 to `lib/monitor`), one library change, and a differential parity harness spanning both
-repos. Deployed as `jeffco-sub-monitor:v2.0.0`.
+repos. Deployed as `jeffco-sub-monitor:v2.0.1`.
 
 ## Final state at merge
 
 | | |
 | --- | --- |
-| Tests | 297 (was 132 after the melanzana cycle) |
+| Tests | 299 (was 132 after the melanzana cycle) |
 | Types | `mypy --strict` clean, 52 files |
 | Lint | `ruff check` and `ruff format --check` clean |
 | Parity | byte-identical, 7720 bytes both sides |
 | melanzana parity | still byte-identical, 7833 / 7308 — unchanged by the library change |
 | TypeScript repo | 173 vitest passing, `tsc --noEmit` clean, no dependencies added |
-| Resident memory | **26.86 MiB** on the host, against Node's **100.2 MiB** |
+| Resident memory | **25.8 MiB** on the host, against Node's **100.2 MiB** |
 
 ## Acceptance criteria, against the spec
 
 | Criterion | Result |
 | --- | --- |
-| ~110 pytest tests green; `mypy --strict` and `ruff` clean | **Met** — 297 total, 165 added this cycle |
+| ~110 pytest tests green; `mypy --strict` and `ruff` clean | **Met** — 299 total, 167 added this cycle |
 | Differential dump byte-identical, including a heartbeat with and without gaps | **Met** — the footer-override seam is exercised against the TypeScript for the first time |
 | Fixtures anonymized in both repos, `cmp`-verified | **Met** — 5 files including `login-page.html` |
 | One live authenticated smoke | **Met** — authenticated first try; the 400 that followed was the predicted session collision |
@@ -227,3 +227,32 @@ a reviewer or an implementer disagreeing with the plan, not by the plan being ri
   like a 4× regression against melanzana's recorded 42.28 MB — until melanzana's *local* image
   also measured 185 MB. The 42.28 MB was a compressed figure. Only 7.81 MB is app code; the
   rest is `python:3.13-slim`. Compare like with like.
+
+## What the final whole-branch review changed
+
+Verdict was safe to merge with no Critical findings. It verified by execution the two
+claims worth not taking on faith: melanzana's blast radius is nil (`busy_only` can only be
+set by `outcome=="busy"`, which only the `except SourceBusy` handler produces, and
+melanzana has zero occurrences of `SourceBusy`), and "a permanently-400ing SFE still
+alerts" holds and is *bounded* — busy-forever alerts at exactly t=3600 with the busy
+wording, busy-then-one-real-fault at t=840 with the death wording, fault-first at t=600.
+
+Shipped as `v2.0.1`:
+
+- **A partial row drop is no longer silent.** `parse_jobs` tolerates a malformed row on
+  purpose so one bad row cannot lose a whole poll, and it raises when *every* row fails.
+  In between, a job with a null `jobEnd` was never announced, never logged, and could not
+  reach the heartbeat's gap report either, because that only covers rows that parsed —
+  every signal read healthy while a real job went unmentioned. Fixed at the call site, so
+  `parse_jobs` stays pure, and log-only, so it cannot affect the parity diff. Inherited
+  verbatim from `sfe.ts:202`, so not a port regression.
+- **`format_approximate` catches `OverflowError`/`OSError` too.** Unreachable today, but
+  this is the *degraded* path: anything escaping it propagates out of `render()`, which
+  withholds every fresh key and retries the identical failure forever.
+- **`busyStall` is in the startup log.** It governs jeffco's commonest failure and is
+  deliberately not in Terraform, so the log was the only place it could be seen.
+
+One finding was deliberately **not** acted on: a naive `jobStart` is interpreted in the
+host timezone. That looks like a bug and is what makes the two implementations agree —
+both JavaScript and Python treat a naive datetime as local. Forcing UTC would *create* a
+divergence. Recorded in the design doc so nobody "corrects" it.
