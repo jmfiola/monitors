@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from monitor.health import init_health, is_stalled, should_alert_stall, should_heartbeat
+from monitor.health import init_health, should_alert_stall, should_heartbeat
 
 # America/Denver wall-clock instants, MST (UTC-7) in December.
 DEC1_0600 = 1796130000
@@ -20,7 +20,7 @@ def test_init_seeds_both_clocks_so_neither_fires_at_boot() -> None:
     assert h.consecutive_failures == 0
     assert h.items_tracked == 0
     assert h.death_alerted is False
-    assert is_stalled(h, 1000, 600) is False
+    assert should_alert_stall(h, 1000, 600, 3600) is False
     assert should_heartbeat(h, 1000, 86400) is False
 
 
