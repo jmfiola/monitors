@@ -1,6 +1,12 @@
 # Jeffco Sub Monitor — Python Port Design
 
-**Status:** design only, nothing implemented. `lib/monitor` is live and
+**Status:** **shipped 2026-08-21** as `jeffco-sub-monitor:v2.0.0`. See
+[the outcome](../plans/2026-08-21-jeffco-port-outcome.md) for what was actually built,
+what diverged from this document, and what was deliberately left open. `lib/monitor` now
+has two consumers; the library needed exactly one change, which is the result this cycle
+was designed to test.
+
+Written as: design only, nothing implemented. `lib/monitor` is live and
 `apps/melanzana` runs on it in production as `v2.0.1`. This is the second
 consumer, and the one the library's seams were validated against without ever
 having been used by.
