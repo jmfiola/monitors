@@ -209,6 +209,13 @@ minute and meridiem assembled by hand are what the parity harness proves byte-id
 `_RANGE_SEP` is an en dash (U+2013) and the day separator is `·` (U+00B7). Both are
 contracts with the reference output, not typography.
 
+The ordinary rendering assertions run under the host locale and therefore do not, by
+themselves, enforce this rule. The locale test switches `LC_TIME` to each available
+non-English fixture, proves `strftime` diverges, and proves both table-based renderers
+do not.
+
+- `test_explicit_date_tables_ignore_lc_time_when_strftime_does_not`
+
 ---
 
 ## The parity harness
