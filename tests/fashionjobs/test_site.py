@@ -65,6 +65,33 @@ def test_extracts_ordinary_and_promoted_stage_cards() -> None:
     assert page.last_page == 42
 
 
+@pytest.mark.parametrize(
+    "invalid_url",
+    [
+        "https://fr.fashionjobs.com/not-a-job,12000001.html",
+        "https://fr.fashionjobs.com/emploi/,12000001.html",
+        "https://fr.fashionjobs.com/emploi/maison/titre,0.html",
+        "https://fr.fashionjobs.com/emploi/maison/titre,12000001.html?source=test",
+        "https://fr.fashionjobs.com/emploi/maison/titre,12000001.html#fragment",
+        "https://fr.fashionjobs.com/redir/0,1.html",
+        "https://fr.fashionjobs.com/redir/12000001,0.html",
+        "https://fr.fashionjobs.com/redir/12000001,1.html?source=test",
+        "http://fr.fashionjobs.com/emploi/maison/titre,12000001.html",
+        "https://fr.fashionjobs.com:443/emploi/maison/titre,12000001.html",
+        "https://example.com/emploi/maison/titre,12000001.html",
+    ],
+)
+def test_rejects_unsupported_job_url_shapes(invalid_url: str) -> None:
+    html = fixture("stage-page-1.html").replace(
+        "https://fr.fashionjobs.com/emploi/maison-exemple/Stage-assistant-produit,12000001.html",
+        invalid_url,
+        1,
+    )
+
+    with pytest.raises(FashionJobsParseError, match="invalid job URL"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
 def test_void_tags_inside_card_do_not_prevent_extraction() -> None:
     html = fixture("stage-page-1.html").replace(
         '<div class="job-card job-card__wrapper job-card__wrapper--col">',
@@ -89,12 +116,47 @@ def test_self_closing_void_tag_inside_card_does_not_prevent_extraction() -> None
     assert [job.job_id for job in page.jobs] == [12000001, 12000002, 12000003]
 
 
+def test_truncated_document_fails_after_a_complete_card() -> None:
+    html = fixture("stage-page-1.html")
+    truncated = html[: html.index("</li>") + len("</li>")]
+
+    with pytest.raises(FashionJobsParseError, match="complete HTML document"):
+        parse_page(truncated, expected_url=STAGE_URL)
+
+
 def test_positive_stage_count_without_finalized_jobs_raises() -> None:
     html = fixture("stage-page-1.html").replace(
         "job-card job-card__wrapper job-card__wrapper--col", "not-a-job-card"
     )
 
     with pytest.raises(FashionJobsParseError, match="no job cards"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_positive_count_with_insufficient_cards_requires_end_pagination() -> None:
+    html = fixture("stage-page-1.html")
+    without_pagination = html[: html.index('<nav class="pagination">')] + "</body></html>"
+
+    with pytest.raises(FashionJobsParseError, match="end pagination"):
+        parse_page(without_pagination, expected_url=STAGE_URL)
+
+
+def test_positive_count_equal_to_cards_allows_a_single_page() -> None:
+    html = fixture("stage-page-1.html").replace("Stage (1266)", "Stage (3)")
+    single_page = html[: html.index('<nav class="pagination">')] + "</body></html>"
+
+    page = parse_page(single_page, expected_url=STAGE_URL)
+
+    assert len(page.jobs) == 3
+    assert page.result_count == 3
+    assert page.next_url is None
+    assert page.last_page == 1
+
+
+def test_positive_count_less_than_stage_cards_fails() -> None:
+    html = fixture("stage-page-1.html").replace("Stage (1266)", "Stage (2)")
+
+    with pytest.raises(FashionJobsParseError, match=r"fewer results.*Stage job cards"):
         parse_page(html, expected_url=STAGE_URL)
 
 
@@ -167,6 +229,24 @@ def test_zero_stage_results_are_a_valid_empty_page() -> None:
     assert page.result_count == 0
     assert page.next_url is None
     assert page.last_page == 1
+
+
+def test_zero_stage_count_with_cards_fails() -> None:
+    html = fixture("stage-page-1.html").replace("Stage (1266)", "Stage (0)")
+    without_pagination = html[: html.index('<nav class="pagination">')] + "</body></html>"
+
+    with pytest.raises(FashionJobsParseError, match=r"zero results.*job cards"):
+        parse_page(without_pagination, expected_url=STAGE_URL)
+
+
+def test_zero_stage_count_with_pagination_fails() -> None:
+    pagination = (
+        f'<a rel="next" href="{page_url(2)}">Suivant</a><a rel="end" href="{page_url(2)}">2</a>'
+    )
+    html = fixture("empty-stage-page.html").replace("</body>", f"{pagination}</body>")
+
+    with pytest.raises(FashionJobsParseError, match=r"zero results.*pagination"):
+        parse_page(html, expected_url=STAGE_URL)
 
 
 def test_nonzero_stage_count_without_cards_fails() -> None:
@@ -388,6 +468,7 @@ async def test_http_status_classification(status_code: int, retryable: bool) -> 
 
     assert caught.value.status_code == status_code
     assert caught.value.retryable is retryable
+    assert f"retryable={str(retryable).lower()}" in str(caught.value)
 
 
 async def test_transport_failure_escapes() -> None:
