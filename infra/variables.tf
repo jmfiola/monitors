@@ -169,6 +169,11 @@ variable "fashionjobs_discord_webhook_url" {
   type        = string
   description = "Discord webhook for FashionJobs internship alerts. A credential: anyone holding it can post."
   sensitive   = true
+
+  validation {
+    condition     = can(regex("^https://[^/[:space:]]+", var.fashionjobs_discord_webhook_url))
+    error_message = "fashionjobs_discord_webhook_url must be an https:// URL."
+  }
 }
 
 variable "fashionjobs_status_webhook_url" {
@@ -176,6 +181,11 @@ variable "fashionjobs_status_webhook_url" {
   description = "Optional separate Discord webhook for FashionJobs ops messages. Empty = use the alert channel."
   default     = ""
   sensitive   = true
+
+  validation {
+    condition     = var.fashionjobs_status_webhook_url == "" || can(regex("^https://[^/[:space:]]+", var.fashionjobs_status_webhook_url))
+    error_message = "fashionjobs_status_webhook_url must be empty or an https:// URL."
+  }
 }
 
 variable "fashionjobs_poll_interval_sec" {
