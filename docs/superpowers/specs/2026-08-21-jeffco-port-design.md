@@ -187,14 +187,33 @@ exact spellings.
 ### Four layers, cheapest first
 
 1. **Anonymize and copy the fixtures**, `cmp`-verified in both directions.
-2. **Translate the surviving tests**, tests before implementation. Counted with vitest, not grepped: **173** exist. Dropped as library-owned — `timing` (7), `state` (5),
-   `health` (5), `index` (24) — is exactly 41. Translated: `schools` (41), `dates`
-   (14), `discord` (21), `sfe` (40), `config` (16), and `schools` is 41 not 16 — exactly 132, though several of
-   config's 13 cover shared names (`STATUS_WEBHOOK_URL`, `HEARTBEAT_INTERVAL_SEC`,
-   `STALL_ALERT_SEC`) that `tests/lib/test_config.py` already asserts, so those
-   become app-level wiring checks rather than re-tests of library primitives. Plus
-   new tests for the four contract methods and for the busy-stall threshold. Expect
-   roughly 110.
+2. **Translate the surviving tests**, tests before implementation. Counted with
+   vitest, never grepped — an earlier revision of this paragraph carried three wrong
+   counts, each of which would have silently under-ported a file:
+
+   | File | Cases | Fate |
+   | --- | --- | --- |
+   | `timing` | 7 | dropped, library-owned |
+   | `state` | 5 | dropped, library-owned |
+   | `health` | 5 | dropped, library-owned |
+   | `index` | 24 | dropped, library-owned (the loop half) |
+   | `schools` | 41 | translated |
+   | `sfe` | 40 | translated |
+   | `discord` | 21 | translated |
+   | `config` | 16 | translated |
+   | `dates` | 14 | translated |
+
+   41 dropped, 132 translated, 173 total. Several of config's 16 cover shared names
+   (`STATUS_WEBHOOK_URL`, `HEARTBEAT_INTERVAL_SEC`, `STALL_ALERT_SEC`) that
+   `tests/lib/test_config.py` already asserts, so those become app-level wiring
+   checks rather than re-tests of library primitives. Likewise `discord`'s
+   ops-message cases (heartbeat, death, recovery, `postAlert`) are library-owned.
+   Plus new tests for the four contract methods and for the busy-stall threshold.
+   Expect roughly 110.
+
+   **Enumerate each file's cases before porting it.** Every under-port in this cycle
+   came from working off a remembered count or an illustrative excerpt instead of
+   opening the file and listing its `it(...)` blocks.
 3. **Extend the differential harness.** A jeffco dump on both sides: job alerts
    rendered from all four fixtures, a heartbeat **with and without** filter gaps —
    that pair is the footer-override seam the library added for jeffco and has never
