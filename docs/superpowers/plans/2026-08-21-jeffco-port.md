@@ -1361,14 +1361,19 @@ Frozen clock, identical literals on both sides, cases in this order:
 | `2-contiguous` | `job-detail-contiguous.json` | multi-day, uniform schedule stated once |
 | `3-multiday` | `job-detail-multiday.json` | differing schedules, per-day times |
 | `4-batch` | all rows of `available-jobs.json` | **one message per job**, and their order |
-| `5-approximate` | a job whose detail fetch "failed" | the degraded date line |
+| `5-approximate` | a job with **no** resolved days | the degraded date line |
 | `6-dst-span` | a synthetic job spanning 2026-03-08 | both days at 7:45 AM local |
 | `7-heartbeat-clean` | no gaps | no `fields` key, default footer |
 | `8-heartbeat-gaps` | 14 unmatched names | newest 10 + "…and 4 more", swapped footer |
-| `9-busy` | a busy-latched health state | the new library wording |
-| `10-death` / `11-recovery` | as melanzana's | unchanged library output |
+| `9-death` / `10-recovery` | jeffco's own `OpsLabels` | the death footer and tracked noun |
 
-Case 6 is synthetic on both sides and must use the same literal epochs. Case 9 exercises the library change, so it also guards against the busy branch drifting from the death branch.
+Case 6 is synthetic on both sides and must use the same literal epochs.
+
+**Case 5 calls the approximate formatter directly** — `format_approximate` / `formatApproximate` — rather than simulating a failed fetch. The harness compares *rendering*, and a mocked-failure path would differ between an `httpx.MockTransport` and whatever the TypeScript stubs, making the two sides disagree about something that is not the output. That the failure *routes* to this formatter is a unit test's job (`test_monitor.py`), not the harness's.
+
+**There is deliberately no busy case, and adding one would be a mistake.** Earlier revisions of this plan listed `9-busy`. The TypeScript has no busy Discord payload at all — `discord.ts:168` has exactly one stall message and jeffco's busy handling is a log line at `index.ts:367`. So a busy case could only be built two ways, and both are worthless: the TypeScript script fabricates the Python's new wording, making the case a tautology that prints one literal twice, or the diff fails permanently and destroys the meaning of an empty diff. The busy outcome is [divergence #5](../specs/2026-08-21-jeffco-port-design.md) — deliberate, and therefore exactly what a parity harness must exclude. This is the same constraint the melanzana cycle recorded for invalid dates, and for the same reason.
+
+The busy wording is already unit-tested at `tests/lib/test_discord.py:169`, with further busy coverage in `test_runner_liveness.py`, `test_runner_forever.py`, `test_health.py` and `test_config.py`. Nothing is lost by keeping it out of the harness.
 
 - [ ] **Step 2: Extend `tools/parity-diff.sh`**
 
