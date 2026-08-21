@@ -28,7 +28,7 @@
 
 ## Divergences from melanzana's current behaviour
 
-All three are deliberate. Everything else is parity.
+All four are deliberate. Everything else is parity.
 
 1. **Post-failure semantics (from the spec).** A failed Discord post no longer propagates out of the tick. The runner withholds the affected message's `covers` keys from the saved baseline, banks every other key, keeps polling at normal cadence, and records the tick as a **success** for health purposes. Melanzana today enters backoff and records a health failure, which drives a sustained Discord outage toward a stall alert delivered over the same broken Discord. With more than one message per tick this can re-send an already-delivered message; a duplicate costs one glance, a swallowed slot can cost a day's work.
 
@@ -38,7 +38,11 @@ All three are deliberate. Everything else is parity.
 
 3. **Fresh items are de-duplicated by key (a bug fix).** Melanzana's month enumeration pads and therefore overlaps, and neither `filterBookable` nor `detectNew` de-duplicates, so one slot returned by two month queries alerts as "3 open slot(s)" for a single slot with its day-card line repeated three times. The TypeScript has the identical bug. The library de-duplicates in `run_tick`, which fixes it for every app. Invisible unless the duplicate case occurs.
 
-**Not covered by parity:** log line wording (per the spec), and config error message wording where the library adopts jeffco's stronger URL validation (Task 5).
+4. **A shape-valid but impossible date degrades instead of raising, and the two implementations render it differently by design.** `_parse_key`'s regex matches the *shape* of a date ("YYYY-MM-DD"), not a real one. A key like `2026-02-30 10:00` matches the shape but `date(2026, 2, 30)` raises `ValueError`. The TypeScript's `new Date(2026, 1, 30)` does not raise — JavaScript rolls it over to March 2 and happily computes a weekday and header for that rolled-over date, so it prints a header for the wrong day. Python instead catches the `ValueError` and falls back to the raw-key branch, rendering `2026-02-30 10:00` verbatim with no day-of-week. Raising instead of falling back was considered and rejected: a raise here reaches `run_tick` as a render failure, which withholds every fresh key in the batch and retries the same failure every tick forever — one malformed slot string must not be able to silence all alerting. Covered by `test_a_shape_valid_but_impossible_date_degrades_instead_of_raising` in `tests/melanzana/test_alert.py`.
+
+   **This case must never be added to the differential harness.** The two implementations genuinely differ here by design — one rolls the date over, the other falls back to the raw key — so an invalid-date fixture fed through `./tools/parity-diff.sh` would fail, and a failing diff on a harness whose entire value is "empty diff" trains people to stop trusting it. The unit test above is deliberately the *only* guard for this divergence. A future maintainer hardening the differential harness's date coverage will otherwise walk straight into it; this paragraph exists so they don't have to rediscover it the hard way.
+
+**Not covered by parity:** log line wording (per the spec); config error message wording where the library adopts jeffco's stronger URL validation (Task 5); and **any ops message the Python library adds that has no TypeScript counterpart** — `format_delivery_failure` is the only one today. Those are parity-exempt by construction, because there is nothing to diff them against, so unit tests are their only guard.
 
 ## Known gaps, recorded rather than built
 
@@ -88,7 +92,9 @@ monitors/
 │       ├── alert.py                      day-card embed
 │       ├── monitor.py                    MelanzanaMonitor — the four contract methods
 │       └── main.py                       wires a Monitor to run_forever()
-├── tests/
+├── tests/                                __init__.py at every level: test_config.py exists
+│   │                                     under BOTH lib/ and melanzana/, and pytest's default
+│   │                                     import mode rejects two same-named test modules
 │   ├── lib/                              test_types / test_timing / test_state / test_health /
 │   │                                     test_config / test_discord / test_runner
 │   └── melanzana/
@@ -110,6 +116,22 @@ monitors/
 1. The spec writes `heartbeat_fields()` with `# default: []`. Structural typing has no defaults — a `Protocol` method body is not inherited by a structural implementer. The protocol declares the method and melanzana implements the three-line body. The alternative (a `hasattr` probe in the runner) trades a typed contract for an untyped one.
 
 2. **The method is `heartbeat_extras() -> HeartbeatExtras`, not `heartbeat_fields() -> list[Field]`.** This corrects the spec. Jeffco's heartbeat does not merely add a field when its filter finds unrecognised schools — it *replaces the footer*, `"Routine heartbeat — no action needed."` → `"If any of these are high schools, add them to HS_SCHOOLS."` The field carries the school names; the footer carries the thing to do about them. A `list[Field]` return cannot reach the footer, so the seam that exists specifically for jeffco would not have fit jeffco, and the spec's claim that these three seams prevent a later redesign would have been false for this one. `HeartbeatExtras(fields, footer_text)` is twelve lines now against a contract break across every app later. Three independent reviewers found this; it is the single most valuable correction in this revision.
+
+## Two tool facts that bit during execution
+
+Both were defects in this plan's literal test code, found by implementers and fixed here.
+
+- **`mypy --strict` implies `--no-implicit-reexport`.** Reaching through a module to
+  something it imported — `monitor.state.os`, `monitor.runner.save_state` as an attribute —
+  fails with `does not explicitly export attribute`. Use `monkeypatch`'s **string form**
+  (`monkeypatch.setattr("monitor.state.os.replace", ...)`), which mypy does not type-check
+  as an attribute access. Do not "fix" it in the library with `import os as os`: that puts
+  a test-driven idiom into production code where the next tidy-up will silently break the
+  test.
+- **ruff's isort groups `monitor` and `melanzana` with third-party imports**, because both
+  are installed into the venv by `uv sync` rather than found on a source path. The import
+  blocks written out in this plan are not authoritative about grouping — if `ruff check`
+  reports `I001`, run `uv run ruff check --fix .` and take its ordering.
 
 ## Verification commands
 
@@ -173,6 +195,10 @@ addopts = "--strict-markers"
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+# ruff 0.8 formats Python code blocks inside Markdown. The plan and spec in docs/
+# are documents, not source: reformatting them would churn every code sample and
+# risks their nested code-fence structure.
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
@@ -182,7 +208,10 @@ python_version = "3.13"
 strict = true
 # The library and app are installed into the venv by `uv sync`, so imports
 # resolve without a mypy_path entry.
-files = ["lib", "apps", "tests", "tools"]
+#
+# Deliberately no `files =`: paths are passed on the command line. A fixed list
+# would name tools/, which does not exist until Task 13, and mypy errors on a
+# missing directory rather than skipping it.
 ```
 
 `lib/monitor/pyproject.toml`:
@@ -731,7 +760,6 @@ from pathlib import Path
 
 import pytest
 
-import monitor.state
 from monitor.state import load_state, save_state
 
 
@@ -787,7 +815,12 @@ def test_the_new_baseline_is_staged_in_a_sibling_before_it_replaces_the_target(
     # makes a kill mid-write survivable.
     path = tmp_path / "atomic.json"
     path.write_text('["old"]', encoding="utf-8")
-    monkeypatch.setattr(monitor.state.os, "replace", lambda src, dst: None)
+    # The STRING form, not `monkeypatch.setattr(monitor.state.os, "replace", ...)`:
+    # `mypy --strict` implies --no-implicit-reexport, so reaching through the module
+    # to the `os` it imported fails with 'does not explicitly export attribute "os"'.
+    # Fixing that in the library (`import os as os`) would put a test-driven idiom into
+    # production code, where the next tidy-up would silently break this test.
+    monkeypatch.setattr("monitor.state.os.replace", lambda src, dst: None)
 
     save_state(str(path), {"new"})
 
@@ -1017,6 +1050,16 @@ def test_a_process_starting_an_hour_early_waits_until_the_next_day() -> None:
     assert (DEC2_0700 - DEC1_0600) / 3600 == 25
 
 
+def test_at_hour_is_due_even_when_the_interval_has_not_elapsed() -> None:
+    # The interval is not merely overridden, it is unread: with heartbeat_at set, the
+    # only conditions are "local date advanced" and "at or past the hour". An
+    # implementation that AND-ed interval_sec into this branch would pass every other
+    # test in this file, because they all happen to have elapsed time and satisfied
+    # interval agree in sign.
+    h = replace(init_health(DEC1_0700), last_heartbeat_unix=DEC1_0700)
+    assert should_heartbeat(h, DEC2_0700, 86400 * 365, AT_0700) is True
+
+
 def test_a_backwards_clock_step_does_not_fire_a_heartbeat() -> None:
     # "The local date has changed" means advanced. An NTP correction that steps
     # the clock back a day must not be read as a new day.
@@ -1132,7 +1175,7 @@ def should_heartbeat(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/lib/test_health.py -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 12 passed, mypy `Success`, ruff clean.
+Expected: 13 passed, mypy `Success`, ruff clean.
 
 - [ ] **Step 5: Commit**
 
@@ -1180,6 +1223,7 @@ from monitor.config import (
     env_str,
     env_time,
     load_runner_config,
+    make_log,
 )
 from monitor.types import OpsLabels
 
@@ -1202,10 +1246,14 @@ def test_env_num_rejects_a_non_number() -> None:
 
 
 def test_env_num_rejects_a_non_finite_number() -> None:
-    # float("inf") parses where JS Number("Infinity") also parses; both must be
-    # rejected, or POLL_INTERVAL_SEC=inf becomes a monitor that never polls again.
-    with pytest.raises(ConfigError, match="N must be a number"):
-        env_num({"N": "inf"}, "N", 10)
+    # float("inf") and float("nan") both parse where a JS Number() would too, and
+    # both must be rejected: POLL_INTERVAL_SEC=inf is a monitor that never polls
+    # again, and nan is worse — it compares false against every bound, so it slips
+    # past the minimum check silently. The sign variants are here because a
+    # string-matching implementation would catch "inf" and miss "-inf"/"nan".
+    for raw in ("inf", "-inf", "infinity", "nan", "-nan"):
+        with pytest.raises(ConfigError, match="N must be a number"):
+            env_num({"N": raw}, "N", 10)
 
 
 def test_env_num_rejects_a_value_below_its_minimum() -> None:
@@ -1248,9 +1296,11 @@ def test_env_https_url_rejects_a_non_url_and_a_truncated_paste() -> None:
 
 
 def test_env_https_url_never_echoes_the_value() -> None:
-    # A webhook's path IS its credential, and config errors get logged.
+    # A webhook's path IS its credential, and config errors get logged. Use a
+    # rejected (non-https) URL so a raise actually happens, then check the
+    # message: an accepted URL never reaches an error message at all.
     with pytest.raises(ConfigError) as exc:
-        env_https_url("W", "https://discord.test/leaked-secret-path")
+        env_https_url("W", "http://discord.test/leaked-secret-path")
     assert "leaked-secret-path" not in str(exc.value)
 
 
@@ -1271,6 +1321,11 @@ def test_env_time_raises_rather_than_ignoring_a_malformed_value() -> None:
     for raw in ("7:00", "24:00", "07:60", "0700", "morning"):
         with pytest.raises(ConfigError, match="HEARTBEAT_AT must be an HH:MM"):
             env_time({"HEARTBEAT_AT": raw}, "HEARTBEAT_AT")
+
+
+def test_make_log_stamps_every_line_with_the_app_name(capsys: pytest.CaptureFixture[str]) -> None:
+    make_log("melanzana-monitor")("started")
+    assert capsys.readouterr().out == "[melanzana-monitor] started\n"
 
 
 def test_load_runner_config_applies_defaults() -> None:
@@ -1329,6 +1384,23 @@ def test_load_runner_config_requires_an_https_alert_webhook() -> None:
             log_prefix="x",
             default_poll_interval_sec=10,
         )
+
+
+def test_status_url_falls_back_to_the_alert_webhook() -> None:
+    # Lives here, not in test_discord.py: the fallback is a RunnerConfig property, so a
+    # test of it exercises no transport code. Placed beside the transport it would pass
+    # against an arbitrarily broken discord.py.
+    base = {"DISCORD_WEBHOOK_URL": WEBHOOK}
+    cfg = load_runner_config(base, labels=LABELS, log_prefix="x", default_poll_interval_sec=10)
+    assert cfg.status_url == WEBHOOK
+
+    separate = load_runner_config(
+        {**base, "STATUS_WEBHOOK_URL": "https://discord.test/ops"},
+        labels=LABELS,
+        log_prefix="x",
+        default_poll_interval_sec=10,
+    )
+    assert separate.status_url == "https://discord.test/ops"
 
 
 def test_load_runner_config_validates_the_status_webhook_too() -> None:
@@ -1535,7 +1607,7 @@ def load_runner_config(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/lib/test_config.py -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 17 passed, mypy `Success`, ruff clean.
+Expected: 20 passed, mypy `Success`, ruff clean.
 
 - [ ] **Step 5: Commit**
 
@@ -1556,7 +1628,7 @@ git commit -m "Add env primitives and the runner config schema"
 
 **Interfaces:**
 - Consumes: `monitor.types` (`BLUE`, `Embed`, `Field`, `GREEN`, `HeartbeatExtras`, `OpsLabels`, `Payload`, `RED`), `monitor.health.HealthState`. **Not `monitor.config`** and **not `httpx`.**
-- Produces: `DiscordPostError(Exception)` carrying `status_code: int | None`; `HttpResponse`/`HttpClient` Protocols; `Poster = Callable[[str, Payload], Awaitable[None]]`; `StatusPoster = Callable[[Payload], Awaitable[None]]`; `RETRYABLE_STATUS: frozenset[int]`; `async post(url: str, payload: Payload, client: HttpClient) -> None`; `format_heartbeat(labels, state, now_unix, extras: HeartbeatExtras = HeartbeatExtras()) -> Payload`; `format_status_alert(kind: Literal["death", "recovery"], labels, state, now_unix) -> Payload`; `format_delivery_failure(labels, status_code: int, item_count: int) -> Payload`.
+- Produces: `_DEFAULT_HEARTBEAT_EXTRAS`; `DiscordPostError(Exception)` carrying `status_code: int | None`; `HttpResponse`/`HttpClient` Protocols; `Poster = Callable[[str, Payload], Awaitable[None]]`; `StatusPoster = Callable[[Payload], Awaitable[None]]`; `RETRYABLE_STATUS: frozenset[int]`; `async post(url: str, payload: Payload, client: HttpClient) -> None`; `format_heartbeat(labels, state, now_unix, extras: HeartbeatExtras = HeartbeatExtras()) -> Payload`; `format_status_alert(kind: Literal["death", "recovery"], labels, state, now_unix) -> Payload`; `format_delivery_failure(labels, status_code: int, item_count: int) -> Payload`.
 
 Three changes from the first draft, all of them corrections:
 
@@ -1629,6 +1701,12 @@ def test_retryable_covers_rate_limits_5xx_and_unknown_but_not_a_bad_request() ->
     assert DiscordPostError("x", None).retryable is True
     assert DiscordPostError("x", 400).retryable is False
     assert DiscordPostError("x", 404).retryable is False
+    # 408 Request Timeout and 425 Too Early are in RETRYABLE_STATUS deliberately: both
+    # are transient timing signals rather than "the request's own fault", which is the
+    # distinction that decides whether the runner withholds an item's key or banks it.
+    # Pinned here so the frozenset's contents are asserted, not inferred.
+    assert DiscordPostError("x", 408).retryable is True
+    assert DiscordPostError("x", 425).retryable is True
 
 
 async def test_post_accepts_any_client_with_the_right_shape() -> None:
@@ -1741,19 +1819,6 @@ def test_recovery_alert_matches_melanzanas_wording_and_never_pings() -> None:
     assert embed.color == GREEN
     assert embed.footer_text == "Liveness alert."
 
-
-def test_status_url_falls_back_to_the_alert_webhook() -> None:
-    base = {"DISCORD_WEBHOOK_URL": WEBHOOK}
-    cfg = load_runner_config(base, labels=LABELS, log_prefix="x", default_poll_interval_sec=10)
-    assert cfg.status_url == WEBHOOK
-
-    separate = load_runner_config(
-        {**base, "STATUS_WEBHOOK_URL": "https://discord.test/ops"},
-        labels=LABELS,
-        log_prefix="x",
-        default_poll_interval_sec=10,
-    )
-    assert separate.status_url == "https://discord.test/ops"
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1845,11 +1910,17 @@ async def post(url: str, payload: Payload, client: HttpClient) -> None:
         )
 
 
+# ruff's B008 forbids a function call in a default expression, and a frozen
+# dataclass construction counts. One module-level instance, same value, no call
+# per invocation.
+_DEFAULT_HEARTBEAT_EXTRAS = HeartbeatExtras()
+
+
 def format_heartbeat(
     labels: OpsLabels,
     state: HealthState,
     now_unix: int,
-    extras: HeartbeatExtras = HeartbeatExtras(),
+    extras: HeartbeatExtras = _DEFAULT_HEARTBEAT_EXTRAS,
 ) -> Payload:
     """Heartbeat ops message — confirms the monitor is alive. Never pings.
 
@@ -1944,10 +2015,12 @@ def format_delivery_failure(labels: OpsLabels, status_code: int, item_count: int
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/lib/test_discord.py -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 12 passed, mypy `Success`, ruff clean. Also confirm the library still has no httpx dependency — `grep -r httpx lib/` must return nothing:
+Expected: 11 passed, mypy `Success`, ruff clean. Also confirm the library still has no httpx dependency — `grep -r httpx lib/` must return nothing:
 
 ```bash
-grep -rn httpx lib/ && echo "LEAKED — the transport Protocol is not doing its job" || echo "clean"
+# Anchored to real import statements. A bare `grep httpx lib/` is a false positive:
+# the library carries several comments explaining WHY httpx is not used.
+grep -rnE '^\s*(import|from) httpx' lib/ && echo "LEAKED — the Protocol is not doing its job" || echo "clean"
 ```
 
 - [ ] **Step 5: Commit**
@@ -2391,7 +2464,7 @@ async def run_tick[Item](
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/lib/test_runner_tick.py -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 14 passed, mypy `Success`, ruff clean. If ruff reports the `noqa: BLE001` comments as *unused*, delete them — `BLE` is not in the selected rule set, and an unused suppression is noise.
+Expected: 14 passed (81 across the suite), mypy `Success`, ruff clean. ruff WILL report the `noqa: BLE001` comments as unused — `BLE` is not in the selected rules — so delete them — `BLE` is not in the selected rule set, and an unused suppression is noise.
 
 - [ ] **Step 5: Commit**
 
@@ -2716,7 +2789,7 @@ async def run_liveness(
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `uv run pytest tests/lib/test_runner_liveness.py -q`
-Expected: 10 passed.
+Expected: 9 passed.
 
 - [ ] **Step 5: Write the failing forever-loop test**
 
@@ -3147,7 +3220,7 @@ Note what is absent: no `os` (the filesystem lives in `state.py`), no `time` (th
 - [ ] **Step 8: Run everything to verify it passes**
 
 Run: `uv run pytest -q && uv run mypy --strict lib tests && uv run ruff check .`
-Expected: 8 passed in `test_runner_forever.py`, 77 total across the library, mypy `Success`, ruff clean.
+Expected: 8 passed in `test_runner_forever.py`, 97 total across the library, mypy `Success`, ruff clean.
 
 Then confirm the library is a closed set with no stray dependencies:
 
@@ -4301,15 +4374,16 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxxx/yyyy
 - [ ] **Step 5: Run everything to verify it passes**
 
 Run: `uv run pytest -q && uv run mypy --strict lib apps tests && uv run ruff check .`
-Expected: 4 + 5 passed in the new files, 105 total, mypy `Success`, ruff clean.
+Expected: 4 + 5 passed in the new files, 125 total, mypy `Success`, ruff clean.
 
 `mypy --strict` is also the only thing that checks `MelanzanaMonitor` actually satisfies `Monitor[Slot]`, since the protocol is structural. Make that explicit rather than incidental — add this to `monitor.py` so a signature drift fails type-checking instead of failing at runtime:
 
 ```python
-if TYPE_CHECKING:  # a compile-time assertion, no runtime cost
-    _: Monitor[Slot] = MelanzanaMonitor(
-        cast(MelanzanaConfig, None), cast(httpx.AsyncClient, None)
-    )
+# At the bottom of monitor.py. Add `from typing import TYPE_CHECKING` and
+# `from monitor.types import Monitor` to the imports.
+if TYPE_CHECKING:  # a compile-time assertion, no runtime cost, no fake arguments
+    def _assert_satisfies_protocol(m: MelanzanaMonitor) -> Monitor[Slot]:
+        return m
 ```
 
 - [ ] **Step 6: Prove the app starts and refuses bad config**
@@ -4326,8 +4400,10 @@ except Exception as err:
 
 # A real start against a temp state path. It will fail to reach Discord, which is
 # fine — what matters is the two startup lines and that it polls.
-DISCORD_WEBHOOK_URL=https://discord.test/webhook STATE_PATH=/tmp/melz-smoke.json \
-  timeout 25 uv run python -m melanzana.main; echo "exit=$?"
+# Not `timeout 25 …`: that is GNU coreutils and is absent from a stock macOS.
+(DISCORD_WEBHOOK_URL=https://discord.test/webhook STATE_PATH=/tmp/melz-smoke.json \
+  uv run python -m melanzana.main > /tmp/melz-smoke.log 2>&1 & echo $! > /tmp/melz-smoke.pid)
+sleep 22 && kill "$(cat /tmp/melz-smoke.pid)"; cat /tmp/melz-smoke.log
 ```
 
 Expected: `refused: Config error: DISCORD_WEBHOOK_URL is required`, then two `[melanzana-monitor]` startup lines, a real Cowlendar poll, `firstRun=true`, and `/tmp/melz-smoke.json` written with the current slot keys. `exit=124` is the timeout doing its job.
@@ -4739,6 +4815,7 @@ docker run --rm --platform linux/amd64 \
   -e STATE_PATH=/data/state.json \
   -v /tmp/melz-data:/data \
   --name melanzana-smoke melanzana-monitor:v2.0.0 &
+# `sleep` then `docker stop`, not `timeout` — GNU coreutils is not on a stock macOS.
 sleep 30
 docker stats --no-stream melanzana-smoke || true
 docker logs melanzana-smoke
@@ -5206,18 +5283,18 @@ Record in the commit body or a follow-up note: the observed resident memory agai
 | `tests/lib/test_types.py` | 7 |
 | `tests/lib/test_timing.py` | 7 |
 | `tests/lib/test_state.py` | 9 |
-| `tests/lib/test_health.py` | 12 |
-| `tests/lib/test_config.py` | 17 |
-| `tests/lib/test_discord.py` | 12 |
+| `tests/lib/test_health.py` | 13 |
+| `tests/lib/test_config.py` | 20 |
+| `tests/lib/test_discord.py` | 11 |
 | `tests/lib/test_runner_tick.py` | 14 |
-| `tests/lib/test_runner_liveness.py` | 10 |
+| `tests/lib/test_runner_liveness.py` | 9 |
 | `tests/lib/test_runner_forever.py` | 8 |
 | `tests/melanzana/test_cowlendar.py` | 7 |
 | `tests/melanzana/test_detector.py` | 5 |
 | `tests/melanzana/test_alert.py` | 7 |
 | `tests/melanzana/test_config.py` | 4 |
 | `tests/melanzana/test_monitor.py` | 5 |
-| **Total** | **124** |
+| **Total** | **125** |
 
 The 11 health-server assertions and the 3 `HEALTH_PORT` config tests are gone with the server, as the spec directs. Revision 2 also cut nine tests that restated the implementation or re-tested a library primitive through a second layer — a URL assertion that was a strict substring subset of the byte-identical one above it, `issubclass(SourceBusy, Exception)`, dataclass attribute access, and three melanzana config tests already covered in `tests/lib/test_config.py` — and added twenty-two covering the corrections above. The net growth is entirely in failure paths.
 

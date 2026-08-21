@@ -12,6 +12,7 @@ melanzana_discord_webhook_url = "https://discord.com/api/webhooks/xxxx/yyyy"
 # melanzana_status_webhook_url = "https://discord.com/api/webhooks/xxxx/zzzz"
 # melanzana_window_days        = 60
 # melanzana_mention_everyone   = false   # true = @everyone-ping on every slot alert
+# melanzana_heartbeat_at       = "07:00" # America/Denver; "" = drift with process start
 
 # --- jeffco-sub-monitor (Jeffco substitute jobs) ---
 # The access id and the PIN closely resemble each other, so treat them as one

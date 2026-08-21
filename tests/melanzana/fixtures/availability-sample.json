@@ -1,0 +1,32 @@
+{
+  "short": ["2026-12-01", "2026-12-02"],
+  "long": [
+    {
+      "slot": "2026-12-01 10:30",
+      "slot_start_unix": 1796146200,
+      "slot_duration": 30,
+      "is_bookable": true,
+      "qty_booked": 1,
+      "qty_left": 4,
+      "max_qty": 5
+    },
+    {
+      "slot": "2026-12-01 11:00",
+      "slot_start_unix": 1796148000,
+      "slot_duration": 30,
+      "is_bookable": true,
+      "qty_booked": 0,
+      "qty_left": 5,
+      "max_qty": 5
+    },
+    {
+      "slot": "2026-12-01 11:30",
+      "slot_start_unix": 1796149800,
+      "slot_duration": 30,
+      "is_bookable": true,
+      "qty_booked": 1,
+      "qty_left": 4,
+      "max_qty": 5
+    }
+  ]
+}

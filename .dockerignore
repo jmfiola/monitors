@@ -1,0 +1,17 @@
+.git
+.venv
+infra
+docs
+tests
+tools
+**/__pycache__
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+
+# .env before .env.example: the Dockerfile COPYs whole app directories, and
+# .gitignore does NOT cover the build context. A developer's local
+# apps/melanzana/.env holds a live Discord webhook, and it would ride into a
+# pushed image in Artifact Registry.
+**/.env
+!**/.env.example

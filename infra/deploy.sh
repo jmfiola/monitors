@@ -46,6 +46,33 @@ verify() {
              echo "--- $c"
              docker logs --tail 8 "$c" 2>&1 | grep -v "^$" || true
            done'
+
+  # Asserted, not just printed: a unit that installs and then crash-loops would
+  # otherwise leave a green deploy — the `list-units` line above only shows it, it
+  # never fails the script. Last in this function on purpose: with `set -e`, a
+  # `return 1` here ends the script, so the diagnostics above must print first.
+  #
+  # The unit list comes from outputs.tf's `units` output
+  # (`[for k in keys(var.apps) : "${k}-monitor.service"]`), which Terraform renders
+  # from the same `var.apps` map as apps.auto.tfvars — so a newly added app is
+  # covered automatically, with no second place to remember to update.
+  echo "==> asserting units are active"
+  local units_json
+  units_json="$(terraform output -json units 2>/dev/null || true)"
+  if [[ -z $units_json || $units_json == "null" ]]; then
+    # No `units` output in state yet (e.g. before the first apply). Update this list
+    # by hand if an app is added while state is in this condition.
+    units_json='["melanzana-monitor.service", "jeffco-monitor.service"]'
+  fi
+  local failed=""
+  local unit
+  for unit in $(printf '%s' "$units_json" | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)))'); do
+    on_host "systemctl is-active --quiet $unit" || failed="$failed $unit"
+  done
+  if [[ -n $failed ]]; then
+    echo "FAILED — these units are not active:$failed" >&2
+    return 1
+  fi
 }
 
 case "${1:-}" in
@@ -83,8 +110,15 @@ rm -f .tfplan
 
 # The half terraform cannot do. Idempotent, and restarts only the apps whose unit
 # or env file actually changed — deploying one app should not interrupt the others.
-echo "==> re-running startup script on $INSTANCE"
-on_host 'sudo google_metadata_script_runner startup 2>&1 | tail -25'
+echo "==> re-running startup script on $(tf_out instance_name monitors)"
+# pipefail on the remote side too: without it this pipeline reports tail's exit
+# status, so a failed startup script looks like a successful deploy.
+#
+# `bash -o pipefail -c`, not `set -o pipefail`: the remote login shell is not
+# guaranteed to be bash, and a shell that rejects the option would abort the deploy
+# after apply and before the startup script — the half-deploy this line exists to
+# catch. Invoking bash explicitly removes the assumption.
+on_host 'bash -o pipefail -c "sudo google_metadata_script_runner startup 2>&1 | tail -25"'
 
 echo
 verify

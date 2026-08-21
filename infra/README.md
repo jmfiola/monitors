@@ -47,6 +47,16 @@ Consequences worth knowing:
 - **Deploys are selective.** The startup script compares each rendered unit and
   env file against what is on disk and restarts only what changed, so deploying
   one app does not interrupt the others.
+- **Python images must create a uid-1000 user.** The startup script chowns
+  `/var/lib/<app>-data` to `1000:1000`, which was written for the node image's
+  built-in `node` user. `python:3.13-slim` has no uid-1000 user, so an image
+  without one gets an unwritable `/data` — and the library's state-write handling
+  turns that into a per-tick log line rather than a crash, so it is quiet.
+- **One app's missing image does not skip the others.** The per-app blocks are a
+  Terraform template loop that unrolls into sequential bash, so an `exit` in one
+  would leave the whole script and every app sorting after it would keep its old
+  env file, its old unit, and no restart. A failing app is recorded and skipped
+  instead, and the non-zero exit comes after the restart loop.
 
 ## Deploying
 
@@ -66,6 +76,10 @@ takes the boot disk with it, along with every app's `state.json`.
 
 To ship a new version, bump the tag in `apps.auto.tfvars` (committed, so git
 records what is deployed) and run `./deploy.sh`.
+
+`HEARTBEAT_AT` (melanzana only, default `07:00`) fixes the heartbeat to an
+America/Denver wall-clock hour. jeffco does not read it while it is TypeScript, so
+it is deliberately not set there.
 
 ```bash
 ./deploy.sh --plan      # plan only
@@ -99,10 +113,11 @@ REGION=us-west1
 PROJECT=cobs-cloud
 gcloud auth configure-docker "$REGION-docker.pkg.dev"
 
-# from the melanzana-monitor repo root
-docker build --platform linux/amd64 \
-  -t "$REGION-docker.pkg.dev/$PROJECT/melanzana/melanzana-monitor:v1.2.0" .
-docker push "$REGION-docker.pkg.dev/$PROJECT/melanzana/melanzana-monitor:v1.2.0"
+# from THIS repo's root — melanzana's source lives here now, and the image is
+# built from the shared Dockerfile with --build-arg APP
+docker build --platform linux/amd64 --build-arg APP=melanzana \
+  -t "$REGION-docker.pkg.dev/$PROJECT/melanzana/melanzana-monitor:v2.0.0" .
+docker push "$REGION-docker.pkg.dev/$PROJECT/melanzana/melanzana-monitor:v2.0.0"
 
 # from the jeffco-sub-monitor repo root
 docker build --platform linux/amd64 \
