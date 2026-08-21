@@ -21,9 +21,10 @@ Poster = Callable[[str, Payload], Awaitable[None]]
 #: Posts an ops message. Its implementation must swallow its own errors.
 StatusPoster = Callable[[Payload], Awaitable[None]]
 
-#: Worth trying again. Everything else in 4xx is the request's own fault and will be
-#: rejected identically forever, so retrying it is a way of never noticing.
-RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+#: Retryable statuses outside the 5xx range. Everything else in 4xx is the request's
+#: own fault and will be rejected identically forever, so retrying it is a way of
+#: never noticing.
+RETRYABLE_STATUS = frozenset({408, 425, 429})
 
 #: The payload was rejected, not the transport. Retrying an identical payload cannot
 #: help, so the runner banks these keys to stop an infinite retry — see

@@ -3,6 +3,7 @@ from dataclasses import replace
 import httpx
 import pytest
 from monitor.discord import (
+    RETRYABLE_STATUS,
     DiscordPostError,
     format_delivery_failure,
     format_heartbeat,
@@ -56,12 +57,10 @@ def test_retryable_covers_rate_limits_5xx_and_unknown_but_not_a_bad_request() ->
     assert DiscordPostError("x", None).retryable is True
     assert DiscordPostError("x", 400).retryable is False
     assert DiscordPostError("x", 404).retryable is False
-    # 408 Request Timeout and 425 Too Early are in RETRYABLE_STATUS deliberately:
-    # both are transient timing signals rather than "the request's own fault", which
-    # is the distinction that decides whether the runner withholds an item's key or
-    # banks it. Pinned here so the frozenset's contents are asserted, not inferred.
-    assert DiscordPostError("x", 408).retryable is True
-    assert DiscordPostError("x", 425).retryable is True
+    # 408 Request Timeout and 425 Too Early are transient timing signals rather than
+    # "the request's own fault". Only the non-5xx exceptions belong in the set; the
+    # status range below is the source of truth for server errors.
+    assert frozenset({408, 425, 429}) == RETRYABLE_STATUS
     # Cloudflare sits in front of Discord and 520-524 are routine. Enumerating 5xx made
     # every unlisted one permanent, which banks the item's key and swallows the alert.
     for status in (520, 521, 522, 523, 524, 599):
