@@ -83,8 +83,10 @@ rm -f .tfplan
 
 # The half terraform cannot do. Idempotent, and restarts only the apps whose unit
 # or env file actually changed — deploying one app should not interrupt the others.
-echo "==> re-running startup script on $INSTANCE"
-on_host 'sudo google_metadata_script_runner startup 2>&1 | tail -25'
+echo "==> re-running startup script on $(tf_out instance_name monitors)"
+# `set -o pipefail` on the remote side too: without it this pipeline reports tail's
+# exit status, so a failed startup script looks like a successful deploy.
+on_host 'set -o pipefail; sudo google_metadata_script_runner startup 2>&1 | tail -25'
 
 echo
 verify

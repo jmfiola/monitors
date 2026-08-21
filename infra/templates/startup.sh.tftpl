@@ -23,6 +23,10 @@ docker-credential-gcr configure-docker --registries="${region}-docker.pkg.dev"
 # the others, so only these get restarted at the end.
 restart_list=""
 
+# Apps that could not be deployed at all. Collected rather than fatal, and
+# reported after every healthy app has been restarted — see the image check below.
+failed=""
+
 %{ for name, image in images ~}
 # --- ${name} ----------------------------------------------------------------
 mkdir -p /var/lib/${name}-data
@@ -39,34 +43,43 @@ done
 # prove the image is on this host before anything is restarted. Without this, a
 # registry outage or a typo in an image_tag turns a deploy into a silent outage:
 # the old container is stopped, the new one cannot start, and the thing that
-# would raise the alert is what failed to start. Exiting here is safe because
+# would raise the alert is what failed to start. Skipping this app is safe because
 # every restart happens after this loop, so nothing has been disturbed yet.
 if ! docker image inspect ${image} >/dev/null 2>&1; then
   echo "${name}: image unavailable; leaving the running container alone" >&2
-  exit 1
+  # Record and continue. `exit` here would be a template-loop `exit` — it leaves the
+  # whole script, so every app sorting after this one silently keeps its old env
+  # file, its old unit, and no restart. Terraform iterates the app map in
+  # lexicographic order, so a new app's first deploy is exactly when that bites.
+  failed="$failed ${name}"
+  continue_to_next_app=1
+else
+  continue_to_next_app=0
 fi
 
-# Render to temporary files first so the on-disk versions can be compared before
-# being replaced — that comparison is what makes the restart selective.
-new_env=$(mktemp)
-new_unit=$(mktemp)
-echo '${env_b64[name]}' | base64 -d > "$new_env"
-echo '${units_b64[name]}' | base64 -d > "$new_unit"
+if [[ $continue_to_next_app -eq 0 ]]; then
+  # Render to temporary files first so the on-disk versions can be compared before
+  # being replaced — that comparison is what makes the restart selective.
+  new_env=$(mktemp)
+  new_unit=$(mktemp)
+  echo '${env_b64[name]}' | base64 -d > "$new_env"
+  echo '${units_b64[name]}' | base64 -d > "$new_unit"
 
-changed=0
-cmp -s "$new_env" /etc/monitors/${name}.env || changed=1
-cmp -s "$new_unit" /etc/systemd/system/${name}-monitor.service || changed=1
-systemctl is-active --quiet ${name}-monitor.service || changed=1
+  changed=0
+  cmp -s "$new_env" /etc/monitors/${name}.env || changed=1
+  cmp -s "$new_unit" /etc/systemd/system/${name}-monitor.service || changed=1
+  systemctl is-active --quiet ${name}-monitor.service || changed=1
 
-install -m 0600 "$new_env" /etc/monitors/${name}.env
-install -m 0644 "$new_unit" /etc/systemd/system/${name}-monitor.service
-rm -f "$new_env" "$new_unit"
+  install -m 0600 "$new_env" /etc/monitors/${name}.env
+  install -m 0644 "$new_unit" /etc/systemd/system/${name}-monitor.service
+  rm -f "$new_env" "$new_unit"
 
-if [[ $changed -eq 1 ]]; then
-  restart_list="$restart_list ${name}-monitor.service"
-  echo "${name}: changed, will restart"
-else
-  echo "${name}: unchanged"
+  if [[ $changed -eq 1 ]]; then
+    restart_list="$restart_list ${name}-monitor.service"
+    echo "${name}: changed, will restart"
+  else
+    echo "${name}: unchanged"
+  fi
 fi
 
 %{ endfor ~}
@@ -75,13 +88,26 @@ systemctl daemon-reload
 
 # Enable unconditionally (idempotent) so a reboot brings everything back, but
 # restart only what changed.
+#
+# "Unconditionally" excludes an app that failed the image check above: it may have
+# no unit file at all (a new app's first deploy), and `systemctl enable` on a
+# missing unit fails — which under `set -e` would abort here, before the restart
+# loop, and rebuild exactly the blast radius that check exists to avoid.
 %{ for name, image in images ~}
-systemctl enable ${name}-monitor.service >/dev/null
+if [[ " $failed " != *" ${name} "* ]]; then systemctl enable ${name}-monitor.service >/dev/null; fi
 %{ endfor ~}
 
 for unit in $restart_list; do
   echo "restarting $unit"
   systemctl restart "$unit"
 done
+
+# Last, on purpose: every healthy app is configured and restarted before this
+# reports the failure, and deploy.sh needs the non-zero status to stop calling a
+# half-finished deploy a success.
+if [[ -n "$failed" ]]; then
+  echo "monitors: FAILED to deploy:$failed (other apps were left running)" >&2
+  exit 1
+fi
 
 echo "monitors: startup complete"
