@@ -193,3 +193,15 @@ def test_status_url_falls_back_to_the_alert_webhook() -> None:
         default_poll_interval_sec=10,
     )
     assert separate.status_url == "https://discord.test/ops"
+
+
+def test_busy_stall_defaults_to_an_hour_and_is_not_read_from_the_environment() -> None:
+    # Deliberately not wired to an env var yet: a variable nothing consumes is
+    # config that silently does nothing. Same reasoning that withheld HEARTBEAT_AT.
+    cfg = load_runner_config(
+        {"DISCORD_WEBHOOK_URL": WEBHOOK, "BUSY_STALL_ALERT_SEC": "7"},
+        labels=LABELS,
+        log_prefix="x",
+        default_poll_interval_sec=10,
+    )
+    assert cfg.busy_stall_alert_sec == 3600

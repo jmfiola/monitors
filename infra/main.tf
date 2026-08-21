@@ -80,6 +80,7 @@ locals {
         STALL_ALERT_SEC        = tostring(var.stall_alert_sec)
       },
       var.jeffco_status_webhook_url != "" ? { STATUS_WEBHOOK_URL = var.jeffco_status_webhook_url } : {},
+      var.jeffco_heartbeat_at != "" ? { HEARTBEAT_AT = var.jeffco_heartbeat_at } : {},
     )
   }
 

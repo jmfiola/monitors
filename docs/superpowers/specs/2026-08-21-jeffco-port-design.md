@@ -1,6 +1,12 @@
 # Jeffco Sub Monitor — Python Port Design
 
-**Status:** design only, nothing implemented. `lib/monitor` is live and
+**Status:** **shipped 2026-08-21** as `jeffco-sub-monitor:v2.0.0`. See
+[the outcome](../plans/2026-08-21-jeffco-port-outcome.md) for what was actually built,
+what diverged from this document, and what was deliberately left open. `lib/monitor` now
+has two consumers; the library needed exactly one change, which is the result this cycle
+was designed to test.
+
+Written as: design only, nothing implemented. `lib/monitor` is live and
 `apps/melanzana` runs on it in production as `v2.0.1`. This is the second
 consumer, and the one the library's seams were validated against without ever
 having been used by.
@@ -45,7 +51,7 @@ one small addition rather than a redesign.
 
 Measured against the current TypeScript: `timing.ts` (17 lines), `state.ts` (43),
 `health.ts` (36), and the loop half of `index.ts` all disappear into the library —
-roughly 400 of 1,500 source lines and 41 of 145 tests deleted rather than
+roughly 400 of 1,500 source lines and 41 of 173 tests deleted rather than
 translated.
 
 The library supplies: the poll loop, the key-set diff, first-run suppression,
@@ -187,15 +193,33 @@ exact spellings.
 ### Four layers, cheapest first
 
 1. **Anonymize and copy the fixtures**, `cmp`-verified in both directions.
-2. **Translate the surviving tests**, tests before implementation. Counted, not
-   estimated: 145 exist. Dropped as library-owned — `timing` (7), `state` (5),
-   `health` (5), `index` (24) — is exactly 41. Translated: `schools` (16), `dates`
-   (14), `discord` (21), `sfe` (40), `config` (13) is exactly 104, though several of
-   config's 13 cover shared names (`STATUS_WEBHOOK_URL`, `HEARTBEAT_INTERVAL_SEC`,
-   `STALL_ALERT_SEC`) that `tests/lib/test_config.py` already asserts, so those
-   become app-level wiring checks rather than re-tests of library primitives. Plus
-   new tests for the four contract methods and for the busy-stall threshold. Expect
-   roughly 110.
+2. **Translate the surviving tests**, tests before implementation. Counted with
+   vitest, never grepped — an earlier revision of this paragraph carried three wrong
+   counts, each of which would have silently under-ported a file:
+
+   | File | Cases | Fate |
+   | --- | --- | --- |
+   | `timing` | 7 | dropped, library-owned |
+   | `state` | 5 | dropped, library-owned |
+   | `health` | 5 | dropped, library-owned |
+   | `index` | 24 | dropped, library-owned (the loop half) |
+   | `schools` | 41 | translated |
+   | `sfe` | 40 | translated |
+   | `discord` | 21 | translated |
+   | `config` | 16 | translated |
+   | `dates` | 14 | translated |
+
+   41 dropped, 132 translated, 173 total. Several of config's 16 cover shared names
+   (`STATUS_WEBHOOK_URL`, `HEARTBEAT_INTERVAL_SEC`, `STALL_ALERT_SEC`) that
+   `tests/lib/test_config.py` already asserts, so those become app-level wiring
+   checks rather than re-tests of library primitives. Likewise `discord`'s
+   ops-message cases (heartbeat, death, recovery, `postAlert`) are library-owned.
+   Plus new tests for the four contract methods and for the busy-stall threshold.
+   Expect roughly 110.
+
+   **Enumerate each file's cases before porting it.** Every under-port in this cycle
+   came from working off a remembered count or an illustrative excerpt instead of
+   opening the file and listing its `it(...)` blocks.
 3. **Extend the differential harness.** A jeffco dump on both sides: job alerts
    rendered from all four fixtures, a heartbeat **with and without** filter gaps —
    that pair is the footer-override seam the library added for jeffco and has never
@@ -236,6 +260,24 @@ look like a regression.
 4. **Key de-duplication.** jeffco keys on `jobId` alone, so duplicates are unlikely,
    but the library de-duplicates regardless.
 5. **The `"busy"` outcome**, above — the point of the library change.
+6. **An HTTP timeout exists.** `HTTP_TIMEOUT_SEC` bounds every SFE request; the
+   TypeScript sets no timeout at all, so a hung connection there stalls a tick
+   indefinitely. Found during the final review, after this list was written.
+
+**One thing that looks like a divergence and must not be "corrected".** A `jobStart`
+without a UTC offset is interpreted in the **host** timezone, not `America/Denver`.
+That is deliberate, because it is what the two implementations *agree* on — measured
+under `TZ=America/Denver`:
+
+```
+JS      Date.parse("2026-09-04T13:45")   -> 2026-09-04T19:45:00Z   (local)
+Python  fromisoformat("2026-09-04T13:45") -> 2026-09-04T13:45-06:00 (local)
+```
+
+Both treat a naive datetime as local time, so forcing UTC on the Python side would
+*create* a divergence rather than remove one. Real SFE always sends `Z`
+(`"2026-09-04T13:45Z"`), so the path is unreachable in practice — and no naive string
+appears in the harness, which is why its `TZ`-independence check cannot see this.
 
 ## Error handling
 

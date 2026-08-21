@@ -166,6 +166,23 @@ def test_death_alert_matches_melanzanas_wording_and_never_pings() -> None:
     assert embed.footer_text == "Liveness alert — the monitor may be blocked or down."
 
 
+def test_a_busy_alert_names_the_cause_instead_of_claiming_the_monitor_is_down() -> None:
+    state = replace(init_health(1000), last_success_unix=1000, consecutive_failures=40)
+    payload = format_status_alert("busy", LABELS, state, 5000)
+    embed = payload.embeds[0]
+    assert payload.content is None  # ops messages never ping
+    assert "in use elsewhere" in embed.description
+    # The phrase to avoid lives in the per-app death FOOTER, so assert it there —
+    # asserting its absence from the description is vacuous, and the likeliest wrong
+    # implementation is a copy of the death branch with only the description edited,
+    # which would leave labels.death_footer in place and still pass.
+    assert embed.footer_text is not None
+    assert "blocked or down" not in embed.footer_text
+    assert embed.footer_text == "Liveness alert — no action needed unless it persists."
+    assert embed.footer_text != LABELS.death_footer
+    assert embed.color == RED
+
+
 def test_recovery_alert_matches_melanzanas_wording_and_never_pings() -> None:
     payload = format_status_alert("recovery", LABELS, init_health(1000), 2100)
     assert payload.content is None

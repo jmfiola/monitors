@@ -91,10 +91,14 @@ Both verified before fixing, both on the mandated deploy path:
   channel did not, and it was dropped on 2026-08-21 as no longer wanted. Heartbeats and
   stall alerts keep landing where a human gets pinged. The wiring survives if that ever
   becomes annoying: set `melanzana_status_webhook_url` and deploy.
-- **`SourceBusy` still folds as a health `"failure"`**, so a long upstream-busy period
-  can post "may be blocked or down" when the upstream is reachable. Cannot affect
-  melanzana, which never raises it. The minimal fix when jeffco ports is a `"busy"`
-  outcome that does not feed `is_stalled`.
+- ~~**`SourceBusy` still folds as a health `"failure"`**~~ **Closed 2026-08-21** by the
+  [jeffco port](2026-08-21-jeffco-port-outcome.md). Recorded here because the fix this
+  entry *recommended* was wrong: it proposed "a `"busy"` outcome that does not feed
+  `is_stalled`", and that would have recreated the Cloudflare-5xx defect two sections
+  up — an SFE answering 400 permanently would produce permanent silence under a
+  heartbeat still reporting "still watching". What shipped instead keeps the stall
+  clock running and gives a busy-*only* absence its own longer threshold and wording.
+  If you are reading this entry for guidance, read the replacement, not the proposal.
 - **No enforcement of Discord's 1024-char field or 6000-char embed caps.** Each app caps
   its own content today.
 - **`format_delivery_failure` is posted per message**, so a 20-item batch hitting a

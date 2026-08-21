@@ -125,6 +125,12 @@ class RunnerConfig:
     # handled explicitly in run_tick rather than merely made unlikely here. A code
     # constant, not an env var: it needs a reason attached, not a knob.
     post_spacing_sec: float = 0.35
+    # How long a *busy-only* absence of data is tolerated before it is reported —
+    # see should_alert_stall. Deliberately NOT read from the environment: nothing
+    # would consume BUSY_STALL_ALERT_SEC that a code constant does not, and an env
+    # var nobody reads is config that silently does nothing. Same reasoning that
+    # withheld HEARTBEAT_AT until the app that needed it existed.
+    busy_stall_alert_sec: int = 3600
 
     @property
     def status_url(self) -> str:

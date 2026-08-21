@@ -1,0 +1,57 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<body><script src="/Line-awayes-And-Chile-comforsedome-wort-I-safe-M" async></script>
+	<script src="js/jwt-decode.min.js"></script>
+	<script type="text/javascript">
+		/*export class  User {
+		    userId: number;
+		    userName: string;
+		    clientId: string;
+		    grantType: string;
+		    token: string;
+		    roles: string[];
+		    tokenExpiry: Date | string;
+		    tokenIssued: Date| string;
+		    password: string;
+		    language: string //'en'| 'es' | 'fr'
+		}*/
+		var token = 'Bearer eyJraWQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMCIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJ7XCJ1c2VySWRcIjoxMTExMSxcInVzZXJuYW1lXCI6XCI5OTk5OTlcIixcInJvbGVzXCI6W1wiU1VCU1RJVFVURVwiXSxcImNsaWVudElkXCI6XCIwMDAwXCIsXCJ0ZW5hbnRJZFwiOjEwNDIwfSIsImlhdCI6MTc4NjczNTE4MSwiZXhwIjoxNzg2NzQyMzgxLCJpc3MiOiJodHRwczovL2plZmZjby5zZmUucG93ZXJzY2hvb2wuY29tIn0.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+		var decodedToken = jwt_decode(token);
+		console.log(token);
+		console.log(decodedToken);
+
+		var user = new Object();
+		user.userId = JSON.parse(decodedToken.sub).userId;
+		user.userName = JSON.parse(decodedToken.sub).username;
+		user.clientId = JSON.parse(decodedToken.sub).clientId;
+		user.grantType = "authorization_code";
+		user.token = token;
+		user.roles = JSON.parse(decodedToken.sub).roles;
+		user.tokenExpiry = decodedToken.exp;
+		user.tokenIssued = decodedToken.iat;
+		user.language = 'en';
+		
+		var subSystemOption = '{"callBackPhNumVerification":false,"dateFormat":"MM/dd/yyyy","timeZone":"America/Denver","mobileApplicationAccess":true,"allowAccessAvailJobs":true}';
+		var subParameter = new Object();
+		subParameter.dateFormat = JSON.parse(subSystemOption).dateFormat;
+		subParameter.timeZone = JSON.parse(subSystemOption).timeZone;
+		subParameter.allowAccessAvailJobs = JSON.parse(subSystemOption).allowAccessAvailJobs;
+		subParameter.callBackPhNumVerification = JSON.parse(subSystemOption).callBackPhNumVerification;
+		subParameter.mobileApplicationAccess = JSON.parse(subSystemOption).mobileApplicationAccess;
+		
+		var adminRefrainUrl = '';
+		var isViewingAsEmployee = 'false' === 'true';
+		var isImpersonate = 'false' === 'true';
+		
+		localStorage.setItem('user', JSON.stringify(user));
+		localStorage.setItem('systemOption', JSON.stringify(subParameter));
+		localStorage.setItem('adminRefrainUrl', JSON.stringify(adminRefrainUrl));
+		localStorage.setItem('isViewingAsEmployee', JSON.stringify(isViewingAsEmployee));
+		localStorage.setItem('isImpersonate', JSON.stringify(isImpersonate));
+		
+		console.log(JSON.stringify(user));
+
+		document.location = '/ui/';
+	</script>
+<script type="text/javascript" src="/_Incapsula_Resource?SWJIYLWA=719d34d31c8e3a6e6fffd425f7e032f3&ns=3&cb=43236968" async></script></body>
+</html>

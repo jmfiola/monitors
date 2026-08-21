@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from monitor.health import init_health, is_stalled, should_heartbeat
+from monitor.health import init_health, is_stalled, should_alert_stall, should_heartbeat
 
 # America/Denver wall-clock instants, MST (UTC-7) in December.
 DEC1_0600 = 1796130000
@@ -97,3 +97,23 @@ def test_at_hour_is_due_even_when_the_interval_has_not_elapsed() -> None:
     # satisfied interval agree in sign.
     h = replace(init_health(DEC1_0700), last_heartbeat_unix=DEC1_0700)
     assert should_heartbeat(h, DEC2_0700, 86400 * 365, AT_0700) is True
+
+
+# --- BUSY_STALL_ALERT_SEC -------------------------------------------------
+
+
+def test_a_busy_only_absence_uses_the_longer_threshold() -> None:
+    # A shared-login collision is not a fault, so ten minutes of it must not page
+    # anyone — but it is still an absence of data, so it cannot be ignored either.
+    h = replace(init_health(1000), busy_only=True)
+    assert should_alert_stall(h, 1000 + 600, 600, 3600) is False
+    assert should_alert_stall(h, 1000 + 3599, 600, 3600) is False
+    assert should_alert_stall(h, 1000 + 3600, 600, 3600) is True
+
+
+def test_a_real_fault_uses_the_short_threshold_even_after_busy_ticks() -> None:
+    # The moment anything other than a busy signal happens, the generous window is
+    # gone: this is how a permanently-400ing upstream still surfaces, and how a
+    # genuine outage is not hidden behind an hour of grace.
+    h = replace(init_health(1000), busy_only=False)
+    assert should_alert_stall(h, 1000 + 600, 600, 3600) is True

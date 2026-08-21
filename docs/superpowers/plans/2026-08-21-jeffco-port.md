@@ -81,9 +81,15 @@ First because everything downstream reads these files, and because they currentl
 **Files:**
 - Modify: `~/personal/jeffco-sub-monitor/test/fixtures/{available-jobs,job-detail-single,job-detail-contiguous,job-detail-multiday}.json`
 - Modify: any `~/personal/jeffco-sub-monitor/test/*.test.ts` asserting a name or employee id
-- Create: `tests/jeffco/fixtures/` (the four copies), `tests/jeffco/__init__.py`
+- Create: `tests/jeffco/fixtures/` (**five** copies — the four JSON fixtures plus `login-page.html`), `tests/jeffco/__init__.py`
 
 **Interfaces:** none — data only.
+
+**Before you touch that repo:** it has a **pre-existing uncommitted change** to
+`.env.example` (a comment trimmed and `POLL_INTERVAL_SEC` moved from 20 to 60) that is
+**not yours**. Leave it alone and never `git add -A` there — stage only the fixture and
+test files you edit, by name. Its suite is green at 173 passing before you start; that
+is the number to match afterwards.
 
 - [ ] **Step 1: Find every real name and id**
 
@@ -108,8 +114,13 @@ for path in glob.glob('test/fixtures/*.json'):
 print('names:'); [print('  ', k, v) for k, v in sorted(names.items())]
 print('ids:');   [print('  ', k, v) for k, v in sorted(ids.items())]
 PY
-grep -rn "Johnson\|Cengia" test/*.test.ts src/ || echo "(no source/test references)"
+grep -rnF -f /tmp/real-surnames.txt test/*.test.ts src/ || echo "(no source/test references)"
 ```
+
+Put the real surnames in a scratch file outside the repo and grep with `-f`, rather
+than typing them into a command that lands in this document or in a shell history
+that gets committed. The values this step discovers are real district employees'
+names and employee ids; they are deliberately **not** recorded anywhere in this repo.
 
 Record the complete list. `weekDay` is a day name, not a person — leave it alone; it is in the query only to confirm the walk reaches nested objects.
 
@@ -121,12 +132,19 @@ Suggested, adjust if the real data has more distinct values:
 
 | Real | Fake |
 | --- | --- |
-| `Joseph` / `Johnson` | `Alex` / `Rivera` |
-| `Michael` / `Cengia` | `Sam` / `Okonkwo` |
-| `25714` | `10001` |
-| `22585` | `10002` |
+| first/last name of teacher A | `Alex` / `Rivera` |
+| first/last name of teacher B | `Sam` / `Okonkwo` |
+| employee id A (5 digits) | `10001` |
+| employee id B (5 digits) | `10002` |
 
-Write the mapping into the task report — a later maintainer wondering whether a name is real needs to find this.
+**The real column is deliberately blank, and must stay blank.** Recording the mapping
+here would make the anonymization trivially reversible and would put two real district
+employees' names and employee ids into a tracked file — which is the exact thing this
+task exists to remove. Keep the real values in a scratch file outside the repo for the
+length of this task, then delete it.
+
+What a later maintainer actually needs is the *fake* column, so they can tell that a
+name in a fixture is fictional. That is above, and it is enough.
 
 - [ ] **Step 3: Apply it to the TypeScript repo's fixtures**
 
@@ -134,8 +152,11 @@ Write the mapping into the task report — a later maintainer wondering whether 
 cd ~/personal/jeffco-sub-monitor
 python3 - <<'PY'
 import json, glob, pathlib
-MAP_STR = {"Joseph": "Alex", "Johnson": "Rivera", "Michael": "Sam", "Cengia": "Okonkwo"}
-MAP_INT = {25714: 10001, 22585: 10002}
+# Fill both maps from the scratch file written in Step 2. They are left unpopulated
+# here on purpose: the keys are real employees' names and ids, and this file is tracked.
+MAP_STR = {}  # {"<real first A>": "Alex", "<real last A>": "Rivera", ...}
+MAP_INT = {}  # {<real id A>: 10001, <real id B>: 10002}
+assert MAP_STR and MAP_INT, "populate from the scratch file before running"
 FIELDS_STR = {"employeeFirstName", "employeeLastName", "teacher"}
 FIELDS_INT = {"employeeId"}
 
@@ -166,11 +187,11 @@ Then read the diff. **Only values should have changed.** If the reformat moved u
 
 ```bash
 cd ~/personal/jeffco-sub-monitor
-grep -rn "Joseph\|Johnson\|Michael\|Cengia\|25714\|22585" test/ src/
+grep -rnF -f /tmp/real-values.txt test/ src/
 # Replace each with its mapped fake, then:
 npm test
 ```
-Expected: 145 passing, same as before. **If the count changed, stop** — a test was deleted rather than updated.
+Expected: **173** passing, same as before. **If the count changed, stop** — a test was deleted rather than updated.
 
 - [ ] **Step 5: Copy into this repo and prove byte-equality**
 
@@ -182,10 +203,22 @@ for f in available-jobs job-detail-single job-detail-contiguous job-detail-multi
   cmp "$HOME/personal/jeffco-sub-monitor/test/fixtures/$f.json" "tests/jeffco/fixtures/$f.json" \
     && echo "$f: identical ($(wc -c < tests/jeffco/fixtures/$f.json | tr -d ' ') bytes)"
 done
-grep -rniE 'johnson|cengia|25714|22585' tests/jeffco/fixtures/ && echo "REAL DATA STILL PRESENT" || echo "no real names or ids remain"
+grep -rniF -f /tmp/real-values.txt tests/jeffco/fixtures/ \
+  && echo "REAL DATA STILL PRESENT" || echo "no real names or ids remain"
+rm -f /tmp/real-values.txt /tmp/real-surnames.txt   # the scratch files, gone
 ```
 
-Note `login-page.html` is **not** copied: nothing in the Python port parses login HTML beyond a token regex, and the fixture exists for a TypeScript test of the redirect flow that becomes an httpx-level test here.
+Then sweep the **whole tracked tree of both repos**, not just the fixtures — the values
+leak into test expectations and into prose, and a sweep scoped to `test/` and `src/`
+missed three tracked docs when this was first done:
+
+```bash
+for repo in ~/personal/monitors ~/personal/jeffco-sub-monitor; do
+  git -C "$repo" grep -inF -f /tmp/real-values.txt -- . || echo "$repo: clean"
+done
+```
+
+**`login-page.html` IS copied** — an earlier draft of this plan said not to, on the reasoning that nothing in the Python port parses login HTML beyond a token regex. That reasoning was backwards: `extract_token` and `token_expiry_unix` are exactly that regex and that JWT, and testing them against the real page is strictly stronger than against a synthetic string. Checked before accepting it: the fixture carries no `;jsessionid=`, its bearer token expired 2026-08-14, and the JWT's `sub` claim already holds obvious placeholders (`userId: 11111`, `username: "999999"`, `clientId: "0000"`), so whoever built it already sanitised it. Add it to the `cmp` gate in Task 9 alongside the other four — both implementations read it, so byte-equality matters.
 
 - [ ] **Step 6: Commit, both repos**
 
@@ -208,7 +241,7 @@ The one library change. Read the spec's "Why the library changes once" first —
 
 **Files:**
 - Modify: `lib/monitor/src/monitor/health.py`, `config.py`, `discord.py`, `runner.py`
-- Modify: `tests/lib/test_health.py`, `test_config.py`, `test_discord.py`, `test_runner_liveness.py`
+- Modify: `tests/lib/test_health.py`, `test_config.py`, `test_discord.py`, `test_runner_liveness.py`, and **`test_runner_forever.py`** — its `test_a_status_post_failure_never_disturbs_polling` forces an ops post with `SourceBusy` plus `STALL_ALERT_SEC=1`, which stops working once busy takes 3600s. Since `busy_stall_alert_sec` is deliberately not env-readable, squeeze it with `replace(cfg_for(...), busy_stall_alert_sec=1)` and keep both the `SourceBusy` and the `[10, 10]` cadence assertion.
 
 **Interfaces:**
 - Consumes: existing library types.
@@ -281,7 +314,10 @@ async def test_a_busy_outcome_latches_one_busy_alert_and_recovers() -> None:
     posts = Collector()
     cfg = cfg_with()
     health = init_health(1000)
-    for now in (1600, 4000, 4600):       # 600 and 3000 elapsed: under the hour
+    for now in (1600, 4000):             # 600 and 3000 elapsed: under the hour.
+                                         # NOT 4600 — that is exactly 3600 elapsed, and
+                                         # is_stalled is >=, so it would alert and
+                                         # contradict the assertion below.
         health = await run_liveness(
             cfg, health, outcome="busy", items_tracked=0, now=now,
             heartbeat_extras=HeartbeatExtras, poster=posts, log=noop_log,
@@ -323,7 +359,13 @@ async def test_one_real_fault_forfeits_the_busy_grace_window() -> None:
     # 700s elapsed, past the 600s fault threshold, and busy_only is already
     # forfeited — so this alerts as a death, not as a busy signal.
     assert len(posts.posts) == 1
-    assert "blocked or down" in posts.posts[0].embeds[0].description
+    # "blocked or down" lives in the per-app death FOOTER (labels.death_footer), not the
+    # description — this module's LABELS uses "footer." — and moving it into the
+    # description would change melanzana's death payload and break parity. Assert the
+    # death shape instead.
+    assert "3 consecutive failures" in posts.posts[0].embeds[0].description
+    assert "in use elsewhere" not in posts.posts[0].embeds[0].description
+    assert posts.posts[0].embeds[0].footer_text == LABELS.death_footer
 ```
 
 - [ ] **Step 2: Run them and see them fail**
@@ -416,8 +458,8 @@ Then update `run_forever`'s `SourceBusy` branch to pass `outcome="busy"` instead
 - [ ] **Step 4: Verify**
 
 ```
-uv run pytest tests/lib -q            # expect 140 (132 + 8 new)
-uv run pytest -q                       # expect 140
+uv run pytest tests/lib -q            # expect 110 (103 lib + 7 new)
+uv run pytest -q                       # expect 139 (110 lib + 29 melanzana)
 uv run mypy --strict lib apps tests tools
 uv run ruff check . && uv run ruff format --check .
 ./tools/parity-diff.sh                 # MUST still be identical — melanzana's payloads are untouched
@@ -439,7 +481,7 @@ data, so it gets an hour rather than an exemption."
 
 ### Task 3: The workspace member, types, and the High-School filter
 
-`schools.ts` is pure string work with no I/O and no dates — the cheapest module to port and a good place to establish the app's shape.
+`schools.ts` is pure string work with no I/O and no dates — the cheapest module to port and a good place to establish the app's shape. It also has the **largest test file** of the port: 41 cases, counted from vitest, not grepped.
 
 **Files:**
 - Create: `apps/jeffco/pyproject.toml`, `apps/jeffco/src/jeffco/{__init__,types,schools}.py`
@@ -461,7 +503,7 @@ uv sync && uv run python -c "import jeffco; print('member ok')"
 
 - [ ] **Step 2: Write the failing test**
 
-`tests/jeffco/test_schools.py` — translate all 16 tests from `~/personal/jeffco-sub-monitor/test/schools.test.ts`. The cases that carry the reasoning, and must survive translation:
+`tests/jeffco/test_schools.py` — translate all **41** cases from `~/personal/jeffco-sub-monitor/test/schools.test.ts`. That file is larger than it looks because it exercises the fold table exhaustively. The cases below carry the reasoning and must survive translation; the rest are systematic coverage of normalization and must be ported too, not summarized:
 
 ```python
 from jeffco.schools import (
@@ -599,8 +641,8 @@ _HS_PATTERN = re.compile(r"(^|\s)(HS|SENIOR|JR SR)(\s|$)")
 - [ ] **Step 5: Verify and commit**
 
 ```
-uv run pytest tests/jeffco -q                  # expect 16
-uv run pytest -q                                # expect 156
+uv run pytest tests/jeffco -q                  # expect 41
+uv run pytest -q                                # expect 181
 uv run mypy --strict lib apps tests tools
 uv run ruff check . && uv run ruff format --check .
 ```
@@ -628,7 +670,7 @@ The module the spec names as the most likely source of a real divergence.
 
 - [ ] **Step 1: Write the failing test**
 
-Translate all 14 from `~/personal/jeffco-sub-monitor/test/dates.test.ts`, and add the DST case, which is new:
+**Enumerate, do not illustrate.** An earlier draft of this task showed 11 example tests under the heading "translate all 14", and the illustration was read as the deliverable — six real cases went unported, including the configured-zone one this project's design doc explicitly requires. So: open `~/personal/jeffco-sub-monitor/test/dates.test.ts`, list its 14 `it(...)` cases by name, port each one's assertions, and then add the DST case below. The examples that follow are a subset for reference, not the set to write:
 
 Every timestamp in these tests must be a pinned constant, computed once and written
 into the file — never `datetime.now()`, or the DST tests pass or fail depending on the
@@ -794,8 +836,8 @@ Note the `WEEKDAYS` tuple here starts at Monday and indexes with `isoweekday() -
 - [ ] **Step 4: Verify and commit**
 
 ```
-uv run pytest tests/jeffco -q      # expect 31
-uv run pytest -q                    # expect 171
+uv run pytest tests/jeffco -q      # expect 55
+uv run pytest -q                    # expect 195
 uv run mypy --strict lib apps tests tools && uv run ruff check .
 ```
 
@@ -1004,7 +1046,7 @@ def zoned_wall_clock(unix_sec: int, timezone: str, time: str) -> str:
 - [ ] **Step 4: Verify and commit**
 
 ```
-uv run pytest tests/jeffco -q      # expect ~51
+uv run pytest tests/jeffco -q      # expect ~75
 uv run mypy --strict lib apps tests tools && uv run ruff check .
 ```
 
@@ -1068,6 +1110,8 @@ with me rather than skip:
 Structure the client as:
 
 - `_absorb`/`_cookie_header` **deleted** — `httpx.AsyncClient` handles cookies. Construct the client with `follow_redirects=False` so the manual hop is the only redirect handling.
+- **Every send must go through ONE guarded helper**, and this is a leak channel the TypeScript does not have. `fetch` with `redirect: 'manual'` never parses `Location`; httpx parses it even with `follow_redirects=False`, to build `next_request`, and its `RemoteProtocolError` **quotes the header** — which for SFE legitimately carries a live `;jsessionid=`. Re-raise status-only with `from None`, and make the helper the only place `self._client` is touched so a later call site cannot be added unguarded. Assert the absence of a sentinel from `str`, `repr`, **and the formatted traceback**; the message alone is not enough, because the chained original is what surfaces in a log.
+- Compare origins on **`(scheme, netloc)`**, not `netloc` alone — the TypeScript compared `URL.origin`, and an `http://` downgrade would put session cookies on the wire.
 - `_post_following_one_redirect(url, data)` — exactly one hop. Raise on 307/308 (`"would re-send the credentials; refusing"`), raise on a missing or unparseable `Location`, raise if `urlparse(target).netloc != urlparse(SFE_BASE).netloc`, and raise on a second redirect. **Status-only messages throughout.**
 - `_handshake()` — GET `/logOnInitAction.do`, POST `/logOnAction.do` with `{"userID": …, "userPin": …, "bootstrapDevice": ""}` form-encoded, then `extract_token(response.text)` and `token_expiry_unix`. **Assign both fields or neither**: a token paired with a stale expiry either re-logs in on every call or trusts an expiry that has already passed.
 - `_login()` — the lockout wrapper. Check `now < blocked_until` first and raise `SfeLoginError` naming the remaining seconds; on success reset the counter; on failure increment, and at `MAX_LOGIN_FAILURES` set `blocked_until = now + LOGIN_BACKOFF_SEC` and log why.
@@ -1079,7 +1123,7 @@ Structure the client as:
 - [ ] **Step 3: Verify, with a credential sweep**
 
 ```
-uv run pytest tests/jeffco -q      # expect ~71
+uv run pytest tests/jeffco -q      # expect ~95
 uv run mypy --strict lib apps tests tools && uv run ruff check .
 grep -rnE 'user_id|pin' apps/jeffco/src/jeffco/sfe.py | grep -iE 'log\(|f"|raise' || echo "no credential reaches a message"
 ```
@@ -1209,7 +1253,7 @@ def test_no_gaps_adds_nothing_and_keeps_the_default_footer() -> None:
 - [ ] **Step 3: Verify and commit**
 
 ```
-uv run pytest tests/jeffco -q      # expect ~92
+uv run pytest tests/jeffco -q      # expect ~116
 uv run mypy --strict lib apps tests tools && uv run ruff check .
 ```
 
@@ -1238,7 +1282,7 @@ The three `OpsLabels` strings must match `~/personal/jeffco-sub-monitor/src/disc
 
 - [ ] **Step 1: Write the failing tests**
 
-`test_config.py` — the app-specific half of `config.test.ts`'s 13. `SFE_USER_ID` and `SFE_PIN` required; `HS_SCHOOLS` **additive** (built-in list ∪ configured, never replacing — the realistic edit is "add the school that got missed", and replace semantics would turn that one-liner into a silent loss of 21 campuses); `POLL_INTERVAL_SEC` defaulting to **60**, not 10, and a test asserting that with the reason in a comment; `WINDOW_DAYS` 180; `timezone` fixed to `America/Denver`, not read from the environment.
+`test_config.py` — the app-specific half of `config.test.ts`'s **16**. `SFE_USER_ID` and `SFE_PIN` required; `HS_SCHOOLS` **additive** (built-in list ∪ configured, never replacing — the realistic edit is "add the school that got missed", and replace semantics would turn that one-liner into a silent loss of 21 campuses); `POLL_INTERVAL_SEC` defaulting to **60**, not 10, and a test asserting that with the reason in a comment; `WINDOW_DAYS` 180; `timezone` fixed to `America/Denver`, not read from the environment.
 
 ```python
 def test_the_pin_and_id_are_required() -> None:
@@ -1302,7 +1346,7 @@ if TYPE_CHECKING:
 - [ ] **Step 3: Verify, including a refusal check and a live-config check**
 
 ```
-uv run pytest -q                                   # expect ~215
+uv run pytest -q                                   # expect ~280
 uv run mypy --strict lib apps tests tools && uv run ruff check . && uv run ruff format --check .
 uv run python -c "
 from jeffco.config import load_config
@@ -1344,14 +1388,19 @@ Frozen clock, identical literals on both sides, cases in this order:
 | `2-contiguous` | `job-detail-contiguous.json` | multi-day, uniform schedule stated once |
 | `3-multiday` | `job-detail-multiday.json` | differing schedules, per-day times |
 | `4-batch` | all rows of `available-jobs.json` | **one message per job**, and their order |
-| `5-approximate` | a job whose detail fetch "failed" | the degraded date line |
+| `5-approximate` | a job with **no** resolved days | the degraded date line |
 | `6-dst-span` | a synthetic job spanning 2026-03-08 | both days at 7:45 AM local |
 | `7-heartbeat-clean` | no gaps | no `fields` key, default footer |
 | `8-heartbeat-gaps` | 14 unmatched names | newest 10 + "…and 4 more", swapped footer |
-| `9-busy` | a busy-latched health state | the new library wording |
-| `10-death` / `11-recovery` | as melanzana's | unchanged library output |
+| `9-death` / `10-recovery` | jeffco's own `OpsLabels` | the death footer and tracked noun |
 
-Case 6 is synthetic on both sides and must use the same literal epochs. Case 9 exercises the library change, so it also guards against the busy branch drifting from the death branch.
+Case 6 is synthetic on both sides and must use the same literal epochs.
+
+**Case 5 calls the approximate formatter directly** — `format_approximate` / `formatApproximate` — rather than simulating a failed fetch. The harness compares *rendering*, and a mocked-failure path would differ between an `httpx.MockTransport` and whatever the TypeScript stubs, making the two sides disagree about something that is not the output. That the failure *routes* to this formatter is a unit test's job (`test_monitor.py`), not the harness's.
+
+**There is deliberately no busy case, and adding one would be a mistake.** Earlier revisions of this plan listed `9-busy`. The TypeScript has no busy Discord payload at all — `discord.ts:168` has exactly one stall message and jeffco's busy handling is a log line at `index.ts:367`. So a busy case could only be built two ways, and both are worthless: the TypeScript script fabricates the Python's new wording, making the case a tautology that prints one literal twice, or the diff fails permanently and destroys the meaning of an empty diff. The busy outcome is [divergence #5](../specs/2026-08-21-jeffco-port-design.md) — deliberate, and therefore exactly what a parity harness must exclude. This is the same constraint the melanzana cycle recorded for invalid dates, and for the same reason.
+
+The busy wording is already unit-tested at `tests/lib/test_discord.py:169`, with further busy coverage in `test_runner_liveness.py`, `test_runner_forever.py`, `test_health.py` and `test_config.py`. Nothing is lost by keeping it out of the harness.
 
 - [ ] **Step 2: Extend `tools/parity-diff.sh`**
 
@@ -1405,10 +1454,14 @@ docker run -d --platform linux/amd64 --memory=256m \
   -v /tmp/jeffco-data:/data --name jeffco-smoke jeffco-sub-monitor:v2.0.0
 sleep 40
 docker logs jeffco-smoke
+# Measure BEFORE stopping -- `docker stats` reports nothing for a stopped
+# container, and this figure is the whole reason the memory cap stays at 256m
+# until it is measured rather than predicted.
+docker stats --no-stream --format '{{.Name}} {{.MemUsage}} {{.MemPerc}}' jeffco-smoke
 docker stop jeffco-smoke && docker rm jeffco-smoke
 ```
 
-**Use an obviously-fake user id**, not the real one. Expected: the startup lines, then login failures, then `pausing login attempts for 3600s`. Report the memory figure from `docker stats` without rounding it toward a prediction.
+**Use an obviously-fake user id**, not the real one. Expected: the startup lines, then login failures, then `pausing login attempts for 3600s`. Report the memory figure exactly as printed, without rounding it toward a prediction — the previous cycle predicted ~35 MB and measured 25.3 MiB, and a local Docker Desktop reading is inflated by the VM, so this number is indicative only. The host figure in Task 12 is the one that counts.
 
 - [ ] **Step 3: Push and commit**
 
@@ -1483,8 +1536,15 @@ async def go():
     cfg = load_config(os.environ)
     log = make_log('smoke')
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), follow_redirects=False) as c:
-        sfe = SfeClient(c, cfg.sfe_user_id, cfg.sfe_pin, cfg.timezone, cfg.window_days, system_now, log)
-        m = JeffcoMonitor(cfg, sfe, system_now, log)
+        # Keyword arguments deliberately. An earlier draft of this script passed
+        # JeffcoMonitor's log and now_unix positionally and had them the wrong way
+        # round, which fails at the first log call -- i.e. partway through login,
+        # spending one of the three attempts this account gets per hour.
+        sfe = SfeClient(
+            client=c, user_id=cfg.sfe_user_id, pin=cfg.sfe_pin, timezone=cfg.timezone,
+            window_days=cfg.window_days, now_unix=system_now, log=log,
+        )
+        m = JeffcoMonitor(cfg=cfg, sfe=sfe, log=log, now_unix=system_now)
         jobs = await m.fetch()
         print(f'authenticated and fetched {len(jobs)} high school job(s)')
         for j in jobs[:3]:
@@ -1544,7 +1604,7 @@ Record: the observed memory against jeffco's Node figure of ~94 MiB, whether `fi
 
 **Spec coverage.** Every section of the design maps to a task: fixture anonymization → 1; the busy-stall library change → 2; `schools`/`dates`/`sfe`/`alert`/wiring → 3-8; the harness and the no-shadow-run decision → 9; the image → 10; infra → 11; the live smoke, cutover, and rollback → 12. The three deferrals (coalescing, lockout hoisting, melanzana's rebuild) appear in no task, deliberately.
 
-**Test arithmetic.** 145 exist in TypeScript; 41 are library-owned and dropped; 104 translate. Expected end state: 132 existing + ~8 library (Task 2) + ~16 schools + ~15 dates + ~20 sfe pure + ~20 sfe client + ~21 alert + ~10 config + ~8 monitor ≈ **250**. Each task states its own expected count; if one disagrees with reality, the actual number is right and the plan's estimate is wrong — report it rather than inventing a test.
+**Test arithmetic**, counted with `vitest --reporter=json` rather than grepped — an earlier draft of this plan undercounted by 28 because `grep -cE '^\s+it\('` misses nested and parameterized cases. **173** exist in TypeScript: `schools` 41, `sfe` 40, `index` 24, `discord` 21, `config` 16, `dates` 14, `timing` 7, `state` 5, `health` 5. Library-owned and dropped: `timing`+`state`+`health`+`index` = **41**. Translated: **132**. Expected end state: 132 existing Python + ~8 library (Task 2) + 41 schools + 14 dates + ~40 sfe + 21 alert + ~16 config + ~9 monitor ≈ **281**. Each task states its own expected count; if one disagrees with reality, the actual number is right and the plan's estimate is wrong — report it rather than inventing a test.
 
 **Type consistency.** `Job`/`JobDay` are defined in Task 3 and used unchanged after. `SfeHttpError.status` is set in Task 5 and read by `is_account_busy` in Task 5 and by the client in Task 6. `format_job_alerts` takes `(Job, str)` pairs in Task 7 and is called that way in Task 8. `heartbeat_extras_for(Sequence[str]) -> HeartbeatExtras` in Task 7 is called by `JeffcoMonitor.heartbeat_extras()` in Task 8. `HealthState.busy_only` is added in Task 2 and read only by `should_alert_stall`.
 

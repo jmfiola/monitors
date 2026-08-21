@@ -34,6 +34,9 @@ class HealthState:
     items_tracked: int
     last_heartbeat_unix: int
     death_alerted: bool
+    #: True when every failure since the last success was a busy signal — see
+    #: should_alert_stall for what that buys and why it is not an exemption.
+    busy_only: bool = False
 
 
 def init_health(started_unix: int) -> HealthState:
@@ -49,6 +52,7 @@ def init_health(started_unix: int) -> HealthState:
         items_tracked=0,
         last_heartbeat_unix=started_unix,
         death_alerted=False,
+        busy_only=False,
     )
 
 
@@ -56,6 +60,23 @@ def is_stalled(state: HealthState, now: int, stall_sec: int) -> bool:
     """True when no successful poll has landed for at least `stall_sec`."""
     # >= : the boundary instant itself counts as stalled.
     return now - state.last_success_unix >= stall_sec
+
+
+def should_alert_stall(state: HealthState, now: int, stall_sec: int, busy_stall_sec: int) -> bool:
+    """True when the absence of data has gone on long enough to say something.
+
+    Two thresholds, because two different things look identical to `is_stalled`.
+    A shared-login collision is not a fault — the upstream is reachable and the
+    cause is the account holder using their own account — so ten minutes of it must
+    not page anyone. But it is still an absence of data, so it cannot be exempt:
+    an upstream that answers "busy" *permanently* would otherwise produce
+    indefinite silence underneath a heartbeat still reporting "still watching",
+    which is the failure this project trades everything else against.
+
+    So a busy-only absence gets an hour, and the moment any other fault occurs
+    `busy_only` is forfeited and the short threshold governs again.
+    """
+    return is_stalled(state, now, busy_stall_sec if state.busy_only else stall_sec)
 
 
 def should_heartbeat(
