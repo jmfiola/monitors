@@ -1,0 +1,16 @@
+[project]
+name = "fashionjobs"
+version = "2.0.0"
+description = "FashionJobs France internship monitor"
+requires-python = ">=3.13"
+dependencies = ["monitor", "httpx>=0.28"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fashionjobs"]
+
+[tool.uv.sources]
+monitor = { workspace = true }

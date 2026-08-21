@@ -1,0 +1,1 @@
+"""FashionJobs France internship monitor."""
