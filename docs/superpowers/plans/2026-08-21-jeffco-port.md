@@ -1505,8 +1505,15 @@ async def go():
     cfg = load_config(os.environ)
     log = make_log('smoke')
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), follow_redirects=False) as c:
-        sfe = SfeClient(c, cfg.sfe_user_id, cfg.sfe_pin, cfg.timezone, cfg.window_days, system_now, log)
-        m = JeffcoMonitor(cfg, sfe, system_now, log)
+        # Keyword arguments deliberately. An earlier draft of this script passed
+        # JeffcoMonitor's log and now_unix positionally and had them the wrong way
+        # round, which fails at the first log call -- i.e. partway through login,
+        # spending one of the three attempts this account gets per hour.
+        sfe = SfeClient(
+            client=c, user_id=cfg.sfe_user_id, pin=cfg.sfe_pin, timezone=cfg.timezone,
+            window_days=cfg.window_days, now_unix=system_now, log=log,
+        )
+        m = JeffcoMonitor(cfg=cfg, sfe=sfe, log=log, now_unix=system_now)
         jobs = await m.fetch()
         print(f'authenticated and fetched {len(jobs)} high school job(s)')
         for j in jobs[:3]:
