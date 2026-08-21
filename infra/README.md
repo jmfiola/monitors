@@ -11,8 +11,9 @@ IPv4 address (~$0.005/hr), needed for outbound calls. No inbound ports are opene
 
 > This repo owns the host even though it is named `monitors`. If you later deploy
 > something here that is not a monitor, its Terraform still belongs in this
-> `infra/` — the whole reason this directory exists is that the host used to be
-> provisioned from inside one of its tenants.
+> `infra/`. **Only one Terraform root may exist for this host** — two roots sharing
+> one state means a stray `apply` or `destroy` from the wrong directory is
+> catastrophic.
 
 ## What it provisions
 
@@ -28,35 +29,34 @@ and the env file is `/etc/monitors/<app>.env` at `0600` inside a `0700` director
 
 ## Supervision: systemd, not konlet
 
-GCE's `gce-container-declaration` metadata (konlet) supervises **exactly one
-container per instance**, which is why this host used to run one monitor under
-konlet and the other from a hand-rolled `docker run` in the startup script. That
-metadata key and the `container-vm` label are deliberately **not** set here.
-Instead the startup script writes one systemd unit per app.
+GCE's `gce-container-declaration` metadata (konlet) supervises **exactly one container
+per instance**, so it cannot run this host. That metadata key and the `container-vm`
+label are deliberately **not** set. Instead the startup script writes one systemd unit
+per app, which is also what makes adding an app a three-line tfvars diff.
 
 Consequences worth knowing:
 
 - **No `--restart=always` on the containers.** systemd is the supervisor; two
   supervisors contending over one container behave in ways neither documents.
-- **Container names are stable.** konlet generated `klt-<name>-<random>` and
-  changed the suffix on every recreate, which is why log filters used to need a
-  substring match. Exact matches are safe now.
+- **Container names are exact** (`<app>-monitor`), so log filters can match them
+  exactly rather than by substring.
 - **`--memory` per app** is a leak backstop, not a tuning knob — set well above
   normal operation. There is no swap, so without a cap the kernel picks the OOM
   victim, and it may pick a healthy monitor over the leaking one.
 - **Deploys are selective.** The startup script compares each rendered unit and
   env file against what is on disk and restarts only what changed, so deploying
   one app does not interrupt the others.
-- **Python images must create a uid-1000 user.** The startup script chowns
-  `/var/lib/<app>-data` to `1000:1000`, which was written for the node image's
-  built-in `node` user. `python:3.13-slim` has no uid-1000 user, so an image
-  without one gets an unwritable `/data` — and the library's state-write handling
-  turns that into a per-tick log line rather than a crash, so it is quiet.
+- **An image must create a uid-1000 user.** The startup script chowns
+  `/var/lib/<app>-data` to `1000:1000`, and `python:3.13-slim` has no uid-1000 user of
+  its own, so an image without one gets an unwritable `/data`. The library turns that
+  into a per-tick log line rather than a crash, so it is quiet — the root `Dockerfile`
+  creates the user, and a hand-rolled image is the first place to look. See
+  [`docs/invariants.md`](../docs/invariants.md).
 - **One app's missing image does not skip the others.** The per-app blocks are a
-  Terraform template loop that unrolls into sequential bash, so an `exit` in one
-  would leave the whole script and every app sorting after it would keep its old
-  env file, its old unit, and no restart. A failing app is recorded and skipped
-  instead, and the non-zero exit comes after the restart loop.
+  Terraform template loop that unrolls into sequential bash, so an `exit` in one would
+  leave the whole script — and every app sorting after it would keep its old env file,
+  its old unit, and no restart. A failing app is recorded and skipped instead, and the
+  non-zero exit comes after the restart loop.
 
 ## Deploying
 
@@ -77,9 +77,10 @@ takes the boot disk with it, along with every app's `state.json`.
 To ship a new version, bump the tag in `apps.auto.tfvars` (committed, so git
 records what is deployed) and run `./deploy.sh`.
 
-`HEARTBEAT_AT` (melanzana only, default `07:00`) fixes the heartbeat to an
-America/Denver wall-clock hour. jeffco does not read it while it is TypeScript, so
-it is deliberately not set there.
+`<app>_heartbeat_at` (default `07:00`) fixes that app's heartbeat to an America/Denver
+wall-clock hour. It is wired conditionally, so leaving it empty falls back to
+`HEARTBEAT_INTERVAL_SEC` rather than passing an empty string — those are different
+behaviours.
 
 ```bash
 ./deploy.sh --plan      # plan only
@@ -108,22 +109,25 @@ Then build and push each image. **On an ARM Mac you must build for
 `linux/amd64`** — the `e2-micro` is x86, and a native arm64 image fails on the
 host with "exec format error":
 
+Every app builds from the one root `Dockerfile` with `--build-arg APP`, from this repo's
+root. The image name and tag come from `apps.auto.tfvars`:
+
 ```bash
 REGION=us-west1
 PROJECT=cobs-cloud
 gcloud auth configure-docker "$REGION-docker.pkg.dev"
 
-# from THIS repo's root — melanzana's source lives here now, and the image is
-# built from the shared Dockerfile with --build-arg APP
-docker build --platform linux/amd64 --build-arg APP=melanzana \
-  -t "$REGION-docker.pkg.dev/$PROJECT/melanzana/melanzana-monitor:v2.0.0" .
-docker push "$REGION-docker.pkg.dev/$PROJECT/melanzana/melanzana-monitor:v2.0.0"
-
-# from the jeffco-sub-monitor repo root
-docker build --platform linux/amd64 \
-  -t "$REGION-docker.pkg.dev/$PROJECT/jeffco/jeffco-sub-monitor:v1.1.0" .
-docker push "$REGION-docker.pkg.dev/$PROJECT/jeffco/jeffco-sub-monitor:v1.1.0"
+for app in melanzana jeffco; do
+  # image name and tag must match this app's entry in apps.auto.tfvars
+  IMAGE="$REGION-docker.pkg.dev/$PROJECT/$app/<image>:<tag>"
+  docker build --platform linux/amd64 --build-arg "APP=$app" -t "$IMAGE" .
+  docker push "$IMAGE"
+done
 ```
+
+If a build hangs with no output at all, the credential helper is stuck rather than the
+build being slow: every registry operation that consults credentials blocks, including
+resolving a *public* base image. `pkill -f docker-credential-desktop` and retry.
 
 Then `./deploy.sh` for the rest.
 
@@ -179,6 +183,3 @@ Losing an app's `state.json` is survivable: the next run records a fresh silent
 baseline, so nothing is falsely alerted. It does mean everything currently open
 goes unannounced, which is usually what you want. `echo '[]' > state.json` is the
 supported way to ask for the current backlog instead.
-
-Only one Terraform root may exist for this host. Two roots sharing one state means
-a stray `apply` or `destroy` from the wrong directory is catastrophic.

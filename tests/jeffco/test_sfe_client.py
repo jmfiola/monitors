@@ -240,11 +240,11 @@ async def test_replays_cookies_gathered_across_the_handshake_onto_the_api_call()
 
 async def test_a_partially_dropped_response_says_so_instead_of_alerting_less_quietly() -> None:
     # parse_jobs tolerates a malformed row on purpose, so one bad row cannot lose a
-    # whole poll, and it raises when EVERY row fails. In between, the drop used to be
-    # invisible: a job with a null jobEnd is never announced, never logged, and cannot
-    # reach the heartbeat's gap report either, because that only covers rows that
-    # parsed. Every signal reads healthy while a real job goes unmentioned -- and a
-    # missed job costs a real person a day's work.
+    # whole poll, and it raises when EVERY row fails. In between, the drop would be
+    # invisible without the warning this pins: a job with a null jobEnd is never
+    # announced, never logged, and cannot reach the heartbeat's gap report either,
+    # because that only covers rows that parsed. Every signal reads healthy while a
+    # real job goes unmentioned -- and a missed job costs a real person a day's work.
     good = dict(AVAILABLE_JOBS[0])
     broken = {**good, "jobId": 999999, "jobEnd": None}
     async with client([*login_responses(), json_response([good, broken])]) as h:
@@ -642,10 +642,10 @@ async def test_keeps_the_pin_the_access_id_and_the_token_out_of_every_output_cha
 def test_self_client_is_touched_from_exactly_one_place_in_the_source() -> None:
     """Pins `_send`'s own claim: it is the only place `self._client` is touched.
 
-    An earlier revision had two of four send sites call `self._client.request`
-    directly, bypassing `_send`'s guard around `httpx.RemoteProtocolError` -- and
-    one of those two leaked a live `;jsessionid=` through the raw exception
-    message (see `_send`'s docstring). Counting call sites in the source text is
+    A send site that calls `self._client.request` directly bypasses `_send`'s guard
+    around `httpx.RemoteProtocolError`, which leaks a live `;jsessionid=` through
+    the raw exception message (see `_send`'s docstring). That has happened once, so
+    the count is pinned rather than trusted. Counting call sites in the source text is
     what a new, unguarded call site would actually add; a behavioural test could
     only catch this by contriving every guarded path to raise, which the rest of
     this file already does per-guard, not by construction the way this one does.

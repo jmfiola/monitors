@@ -152,8 +152,8 @@ async def test_a_newly_discovered_school_reaches_a_report_the_old_ones_already_f
     # `_unmatched_seen` hands them over decides who a reader ever sees. Insertion
     # order makes that "the most recently discovered"; sorting it would make it
     # "the alphabetically last", and a new campus early in the alphabet would then
-    # never appear once ten gaps had accumulated. An earlier draft of this method
-    # sorted; this test is what stops it being tidied back.
+    # never appear once ten gaps had accumulated. Sorting here reads like a tidy-up
+    # and is what this test exists to prevent.
     #
     # Only the CROSS-TICK order is pinned. Within one tick `partition_jobs` returns
     # a sorted set, and that is fine: every name in one response was discovered at

@@ -48,7 +48,7 @@ if [[ -z "$project" || "$project" == "(unset)" ]]; then
   exit 1
 fi
 
-# Exact match on the container name. This used to need a substring match for
+# Exact match on the container name. Bare text search would also match
 # melanzana, because konlet named its container klt-melanzana-monitor-<random>
 # and regenerated the suffix on every recreate. systemd names containers itself,
 # so the names are stable and an exact match is safe for every app.

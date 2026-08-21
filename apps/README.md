@@ -48,8 +48,8 @@ the deploy — otherwise the startup script finds no image.
 - **`firstRun=true` when you expected `false`.** The app did not read an existing
   baseline, so everything currently open goes unannounced. Nothing looks wrong.
 - **A state-write failure.** `/data` unwritable logs one line per tick while
-  alerts keep arriving. The root `Dockerfile` handles the uid-1000 cause; if you
-  wrote your own image, that is the first place to look.
+  alerts keep arriving. The root `Dockerfile` creates the uid-1000 user that avoids
+  this; a hand-rolled image is the first place to look.
 - **A missing `HEARTBEAT_AT`.** The heartbeat silently reverts to anchoring on
   process start, so it arrives at whatever time the last deploy happened.
 

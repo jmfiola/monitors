@@ -1,8 +1,8 @@
 """Which months to ask for, and which of the returned slots count.
 
-Every arithmetic operation here is UTC, matching the TypeScript's `getUTCMonth`
-and `getUTCFullYear`. Melanzana has no local-time or DST logic anywhere, which is
-what makes it the low-risk first port.
+Every arithmetic operation here is UTC, matching the reference implementation's
+`getUTCMonth` and `getUTCFullYear`. There is no local-time or DST logic anywhere in
+this app, so nothing here changes behaviour with the host's zone.
 """
 
 from __future__ import annotations
