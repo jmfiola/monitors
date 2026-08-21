@@ -2,29 +2,19 @@ from dataclasses import replace
 from datetime import datetime
 
 import pytest
+from fashionjobs.config import LABELS, load_config
 from fashionjobs.monitor import FashionJobsMonitor
 from fashionjobs.site import FashionJobsError
 from fashionjobs.types import FashionItem, FashionJob, KnownJob
-from monitor.config import RunnerConfig, load_runner_config
+from monitor.config import RunnerConfig
 from monitor.discord import format_heartbeat
 from monitor.health import init_health
 from monitor.runner import run_tick
-from monitor.types import HeartbeatExtras, OpsLabels, Payload
-
-LABELS = OpsLabels(
-    name="FashionJobs internship monitor",
-    tracked_noun="listing identity(ies)",
-    death_footer="Liveness alert — check FashionJobs Stage listings manually.",
-)
+from monitor.types import HeartbeatExtras, Payload
 
 
 def runner_config() -> RunnerConfig:
-    return load_runner_config(
-        {"DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/1/test"},
-        labels=LABELS,
-        log_prefix="fashionjobs-monitor",
-        default_poll_interval_sec=600,
-    )
+    return load_config({"DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/1/test"}).runner
 
 
 async def no_status(_payload: Payload) -> None:
