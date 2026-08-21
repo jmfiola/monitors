@@ -643,7 +643,7 @@ The module the spec names as the most likely source of a real divergence.
 
 - [ ] **Step 1: Write the failing test**
 
-Translate all 14 from `~/personal/jeffco-sub-monitor/test/dates.test.ts`, and add the DST case, which is new:
+**Enumerate, do not illustrate.** An earlier draft of this task showed 11 example tests under the heading "translate all 14", and the illustration was read as the deliverable — six real cases went unported, including the configured-zone one this project's design doc explicitly requires. So: open `~/personal/jeffco-sub-monitor/test/dates.test.ts`, list its 14 `it(...)` cases by name, port each one's assertions, and then add the DST case below. The examples that follow are a subset for reference, not the set to write:
 
 Every timestamp in these tests must be a pinned constant, computed once and written
 into the file — never `datetime.now()`, or the DST tests pass or fail depending on the
