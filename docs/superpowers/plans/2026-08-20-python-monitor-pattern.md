@@ -38,7 +38,7 @@ All three are deliberate. Everything else is parity.
 
 3. **Fresh items are de-duplicated by key (a bug fix).** Melanzana's month enumeration pads and therefore overlaps, and neither `filterBookable` nor `detectNew` de-duplicates, so one slot returned by two month queries alerts as "3 open slot(s)" for a single slot with its day-card line repeated three times. The TypeScript has the identical bug. The library de-duplicates in `run_tick`, which fixes it for every app. Invisible unless the duplicate case occurs.
 
-**Not covered by parity:** log line wording (per the spec), and config error message wording where the library adopts jeffco's stronger URL validation (Task 5).
+**Not covered by parity:** log line wording (per the spec); config error message wording where the library adopts jeffco's stronger URL validation (Task 5); and **any ops message the Python library adds that has no TypeScript counterpart** — `format_delivery_failure` is the only one today. Those are parity-exempt by construction, because there is nothing to diff them against, so unit tests are their only guard.
 
 ## Known gaps, recorded rather than built
 
