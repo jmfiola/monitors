@@ -1,10 +1,13 @@
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
-from fashionjobs.types import FashionJob
+import httpx
+
+from fashionjobs.types import FashionItem, FashionJob, KnownJob
 
 STAGE_LABEL = "Stage"
 STAGE_URL = "https://fr.fashionjobs.com/fr/contrat/Stage,5.html"
@@ -40,6 +43,13 @@ class FashionJobsParseError(FashionJobsError):
     pass
 
 
+class FashionJobsHTTPError(FashionJobsError):
+    def __init__(self, status_code: int, *, retryable: bool) -> None:
+        self.status_code = status_code
+        self.retryable = retryable
+        super().__init__(f"FashionJobs request failed: HTTP {status_code}")
+
+
 @dataclass(frozen=True)
 class ParsedPage:
     jobs: tuple[FashionJob, ...]
@@ -62,6 +72,110 @@ def parse_page(html: str, *, expected_url: str) -> ParsedPage:
     parser.feed(html)
     parser.close()
     return parser.result()
+
+
+def _is_retryable_status(status_code: int) -> bool:
+    return status_code == 429 or status_code >= 500
+
+
+class FashionJobsSource:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        initial_keys: set[str] | None,
+        log: Callable[[str], None],
+    ) -> None:
+        self._client = client
+        self._log = log
+        self._known_ids = {int(key) for key in initial_keys or set()}
+        self._records: dict[int, FashionJob] = {}
+        self._force_full_scan = initial_keys is None
+
+    async def fetch(self) -> list[FashionItem]:
+        return await self._fetch_transaction()
+
+    async def _fetch_transaction(self) -> list[FashionItem]:
+        candidate_records: dict[int, FashionJob] = {}
+        candidate_ids: set[int] = set()
+        excluded_contracts: list[str] = []
+        visited_urls: set[str] = set()
+        page = 1
+        last_page: int | None = None
+
+        while last_page is None or page <= last_page:
+            requested_url = page_url(page)
+            if requested_url in visited_urls:
+                raise FashionJobsParseError("FashionJobs pagination cycle detected")
+            visited_urls.add(requested_url)
+            parsed = await self._request_page(page)
+
+            if last_page is None:
+                last_page = parsed.last_page
+            elif parsed.last_page != last_page:
+                raise FashionJobsParseError("FashionJobs pagination end changed during traversal")
+
+            self._merge_candidate_jobs(candidate_records, parsed.jobs)
+            candidate_ids.update(job.job_id for job in parsed.jobs)
+            excluded_contracts.extend(parsed.excluded_contracts)
+
+            if page < last_page and parsed.next_url != page_url(page + 1):
+                raise FashionJobsParseError("FashionJobs next pagination URL did not match")
+            if page == last_page and parsed.next_url is not None:
+                raise FashionJobsParseError("FashionJobs final page unexpectedly has a next URL")
+            page += 1
+
+        self._known_ids.update(candidate_ids)
+        self._records.update(candidate_records)
+        for contract in excluded_contracts:
+            self._log(f"FashionJobs excluded non-Stage contract: {contract}")
+        return self._items()
+
+    async def _request_page(self, page: int) -> ParsedPage:
+        requested_url = page_url(page)
+        response = await self._client.get(requested_url, follow_redirects=False)
+        if not 200 <= response.status_code < 300:
+            raise FashionJobsHTTPError(
+                response.status_code,
+                retryable=_is_retryable_status(response.status_code),
+            )
+        content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if content_type not in {"text/html", "application/xhtml+xml"}:
+            raise FashionJobsError("FashionJobs response did not have an HTML content type")
+        return parse_page(response.text, expected_url=requested_url)
+
+    @staticmethod
+    def _merge_candidate_jobs(
+        candidate_records: dict[int, FashionJob], jobs: tuple[FashionJob, ...]
+    ) -> None:
+        for job in jobs:
+            existing = candidate_records.get(job.job_id)
+            if existing is None:
+                candidate_records[job.job_id] = job
+                continue
+            if _job_core(existing) != _job_core(job):
+                raise FashionJobsParseError(
+                    f"FashionJobs duplicate job {job.job_id} changed core fields"
+                )
+            if "/emploi/" in job.url and "/redir/" in existing.url:
+                candidate_records[job.job_id] = job
+
+    def _items(self) -> list[FashionItem]:
+        return [
+            self._records.get(job_id, KnownJob(job_id=job_id))
+            for job_id in sorted(self._known_ids)
+        ]
+
+
+def _job_core(job: FashionJob) -> tuple[int, str, str, str, str, datetime]:
+    return (
+        job.job_id,
+        job.title,
+        job.company,
+        job.contract,
+        job.location,
+        job.published_at,
+    )
 
 
 @dataclass

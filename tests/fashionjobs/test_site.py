@@ -1,14 +1,44 @@
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 import pytest
-from fashionjobs.site import STAGE_URL, FashionJobsParseError, page_url, parse_page
+from fashionjobs.site import (
+    STAGE_URL,
+    FashionJobsError,
+    FashionJobsHTTPError,
+    FashionJobsParseError,
+    FashionJobsSource,
+    page_url,
+    parse_page,
+)
+from fashionjobs.types import FashionJob
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def fixture(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+PAGE1_TWO = fixture("stage-page-1.html").replace("Stage,5,42.html", "Stage,5,2.html")
+PAGE2_LAST = (
+    fixture("stage-page-2.html")
+    .replace(
+        '      <a rel="next" href="https://fr.fashionjobs.com/fr/contrat/Stage,5,3.html">Suivant</a>\n',
+        "",
+    )
+    .replace("Stage,5,42.html", "Stage,5,2.html")
+)
+
+
+def html_response(request: httpx.Request, body: str) -> httpx.Response:
+    return httpx.Response(
+        200,
+        text=body,
+        headers={"content-type": "text/html"},
+        request=request,
+    )
 
 
 def test_stage_route_is_fixed_and_has_no_keyword_or_location_query() -> None:
@@ -150,3 +180,131 @@ def test_nonzero_stage_count_without_cards_fails() -> None:
 
     with pytest.raises(FashionJobsParseError, match="no job cards"):
         parse_page(html, expected_url=STAGE_URL)
+
+
+async def test_missing_state_fetches_every_declared_page() -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        body = PAGE1_TWO if str(request.url) == STAGE_URL else PAGE2_LAST
+        return html_response(request, body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2)]
+    assert {item.job_id for item in items} == {11999999, 12000001, 12000002, 12000003}
+
+
+async def test_duplicate_ids_keep_the_direct_emploi_url() -> None:
+    page2_with_redirect_duplicate = PAGE2_LAST.replace(
+        "https://fr.fashionjobs.com/emploi/atelier-exemple/Stage-assistant-communication,12000003.html",
+        "https://fr.fashionjobs.com/redir/12000003,1.html",
+        1,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = PAGE1_TWO if str(request.url) == STAGE_URL else page2_with_redirect_duplicate
+        return html_response(request, body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        items = await source.fetch()
+
+    duplicate_jobs = [item for item in items if item.job_id == 12000003]
+    assert len(duplicate_jobs) == 1
+    assert isinstance(duplicate_jobs[0], FashionJob)
+    assert duplicate_jobs[0].url == (
+        "https://fr.fashionjobs.com/emploi/atelier-exemple/"
+        "Stage-assistant-communication,12000003.html"
+    )
+
+
+async def test_page_two_failure_discards_the_whole_candidate_read() -> None:
+    requested: list[str] = []
+    fail_page_two = True
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal fail_page_two
+        requested.append(str(request.url))
+        if str(request.url) == STAGE_URL:
+            body = PAGE1_TWO if fail_page_two else fixture("empty-stage-page.html")
+            return html_response(request, body)
+        if fail_page_two:
+            fail_page_two = False
+            return httpx.Response(503, request=request)
+        return html_response(request, PAGE2_LAST)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        with pytest.raises(FashionJobsHTTPError) as caught:
+            await source.fetch()
+        items = await source.fetch()
+
+    assert caught.value.status_code == 503
+    assert requested == [STAGE_URL, page_url(2), STAGE_URL]
+    assert items == []
+
+
+@pytest.mark.parametrize(
+    ("status_code", "retryable"),
+    [(429, True), (503, True), (403, False), (404, False)],
+)
+async def test_http_status_classification(status_code: int, retryable: bool) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        with pytest.raises(FashionJobsHTTPError) as caught:
+            await source.fetch()
+
+    assert caught.value.status_code == status_code
+    assert caught.value.retryable is retryable
+
+
+async def test_transport_failure_escapes() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        with pytest.raises(httpx.ConnectError, match="offline"):
+            await source.fetch()
+
+
+async def test_non_html_response_raises_an_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text="{}",
+            headers={"content-type": "application/json"},
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        with pytest.raises(FashionJobsError, match="HTML"):
+            await source.fetch()
+
+
+@pytest.mark.parametrize(
+    "invalid_next_url",
+    [page_url(3), "https://example.com/Stage,5,2.html"],
+)
+async def test_invalid_next_page_raises_before_a_second_request(invalid_next_url: str) -> None:
+    requested: list[str] = []
+    page_with_invalid_next = PAGE1_TWO.replace(page_url(2), invalid_next_url, 1)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return html_response(request, page_with_invalid_next)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        with pytest.raises(FashionJobsParseError):
+            await source.fetch()
+
+    assert requested == [STAGE_URL]
