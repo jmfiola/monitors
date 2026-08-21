@@ -131,9 +131,7 @@ def test_missing_checked_stage_marker_fails_the_page() -> None:
 
 
 def test_a_malformed_card_fails_instead_of_being_skipped() -> None:
-    html = fixture("stage-page-1.html").replace(
-        ' data-value="2026-08-21T21:50:27+02:00"', "", 1
-    )
+    html = fixture("stage-page-1.html").replace(' data-value="2026-08-21T21:50:27+02:00"', "", 1)
 
     with pytest.raises(FashionJobsParseError, match="publication timestamp"):
         parse_page(html, expected_url=STAGE_URL)
@@ -148,9 +146,7 @@ def test_relative_french_text_is_not_used_as_the_timestamp() -> None:
 
 
 def test_a_wrong_canonical_route_fails() -> None:
-    html = fixture("stage-page-1.html").replace(
-        "/fr/contrat/Stage,5.html", "/fr/emploi.html", 1
-    )
+    html = fixture("stage-page-1.html").replace("/fr/contrat/Stage,5.html", "/fr/emploi.html", 1)
 
     with pytest.raises(FashionJobsParseError, match="canonical"):
         parse_page(html, expected_url=STAGE_URL)
@@ -158,9 +154,7 @@ def test_a_wrong_canonical_route_fails() -> None:
 
 def test_matching_non_stage_canonical_and_expected_url_fail() -> None:
     non_stage_url = "https://fr.fashionjobs.com/fr/emploi.html"
-    html = fixture("stage-page-1.html").replace(
-        "/fr/contrat/Stage,5.html", "/fr/emploi.html", 1
-    )
+    html = fixture("stage-page-1.html").replace("/fr/contrat/Stage,5.html", "/fr/emploi.html", 1)
 
     with pytest.raises(FashionJobsParseError, match="Stage route"):
         parse_page(html, expected_url=non_stage_url)

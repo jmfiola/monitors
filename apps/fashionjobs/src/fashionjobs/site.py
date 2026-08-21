@@ -171,8 +171,7 @@ class FashionJobsSource:
 
     def _items(self) -> list[FashionItem]:
         return [
-            self._records.get(job_id, KnownJob(job_id=job_id))
-            for job_id in sorted(self._known_ids)
+            self._records.get(job_id, KnownJob(job_id=job_id)) for job_id in sorted(self._known_ids)
         ]
 
 
@@ -249,9 +248,10 @@ class _FashionJobsPageParser(HTMLParser):
         if url is not None and title is not None:
             self._card.url = url
             self._card.title = _normalize(title)
-        elif (
-            "extended-link" in classes and url is not None
-        ) or {"tw-font-secondary", "tw-uppercase"} <= classes:
+        elif ("extended-link" in classes and url is not None) or {
+            "tw-font-secondary",
+            "tw-uppercase",
+        } <= classes:
             self._start_capture("company")
         elif "muted-text" in classes:
             self._start_capture("muted")
@@ -309,13 +309,9 @@ class _FashionJobsPageParser(HTMLParser):
 
     def result(self) -> ParsedPage:
         if _STAGE_PAGE_URL.fullmatch(self._expected_url) is None:
-            raise FashionJobsParseError(
-                "FashionJobs requested URL did not match the Stage route"
-            )
+            raise FashionJobsParseError("FashionJobs requested URL did not match the Stage route")
         if self._canonical_url is None or _STAGE_PAGE_URL.fullmatch(self._canonical_url) is None:
-            raise FashionJobsParseError(
-                "FashionJobs canonical URL did not match the Stage route"
-            )
+            raise FashionJobsParseError("FashionJobs canonical URL did not match the Stage route")
         if self._canonical_url != self._expected_url:
             raise FashionJobsParseError(
                 "FashionJobs canonical URL did not match the requested page"
