@@ -9,7 +9,7 @@ def slot(key: str, start_unix: int, qty_left: int = 4, is_bookable: bool = True)
     return Slot(key=key, start_unix=start_unix, qty_left=qty_left, is_bookable=is_bookable)
 
 
-def test_enumerates_every_month_the_window_spans_with_pads_on_both_ends() -> None:
+def test_enumerates_every_month_the_window_spans() -> None:
     assert months_to_fetch(NOW, 60) == [
         MonthKey(2026, 11),
         MonthKey(2026, 12),

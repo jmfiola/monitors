@@ -248,6 +248,7 @@ async def test_a_corrupt_baseline_file_says_so(tmp_path: Path) -> None:
     )
 
     assert any("did not parse" in line for line in harness.logged)
+    assert harness.posted == []  # a corrupt baseline still suppresses, or it floods the channel
 
 
 async def test_a_status_post_failure_never_disturbs_polling(tmp_path: Path) -> None:
