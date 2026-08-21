@@ -23,6 +23,12 @@ jeffco_discord_webhook_url = "https://discord.com/api/webhooks/xxxx/yyyy"
 # jeffco_status_webhook_url = "https://discord.com/api/webhooks/xxxx/zzzz"
 # jeffco_poll_interval_sec  = 60   # lower collides with the account holder's own session
 
+# --- fashionjobs-monitor (France-wide Stage listings) ---
+fashionjobs_discord_webhook_url = "https://discord.com/api/webhooks/xxxx/yyyy"
+# fashionjobs_status_webhook_url = "https://discord.com/api/webhooks/xxxx/zzzz"
+# fashionjobs_poll_interval_sec  = 600
+# fashionjobs_heartbeat_at       = "07:00" # America/Denver; "" = drift with process start
+
 # --- shared ops config ---
 # heartbeat_interval_sec = 86400  # daily; raise to quiet it
 # stall_alert_sec        = 600

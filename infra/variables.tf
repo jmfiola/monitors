@@ -34,7 +34,7 @@ variable "zone" {
 # /var/lib/<key>-data, the env file is /etc/monitors/<key>.env, and the Artifact
 # Registry repository is <key>.
 #
-# `image` is explicit rather than derived because the two existing images do not
+# `image` is explicit rather than derived because the published images do not
 # follow one rule — melanzana's is `melanzana-monitor`, jeffco's is
 # `jeffco-sub-monitor`. Inventing a convention here would mean renaming a
 # published image to satisfy a pattern.
@@ -159,6 +159,44 @@ variable "jeffco_heartbeat_at" {
   validation {
     condition     = var.jeffco_heartbeat_at == "" || can(regex("^([01][0-9]|2[0-3]):[0-5][0-9]$", var.jeffco_heartbeat_at))
     error_message = "jeffco_heartbeat_at must be empty or an HH:MM 24-hour time."
+  }
+}
+
+###############################################################################
+# fashionjobs-monitor — France-wide FashionJobs Stage listings.
+###############################################################################
+variable "fashionjobs_discord_webhook_url" {
+  type        = string
+  description = "Discord webhook for FashionJobs internship alerts. A credential: anyone holding it can post."
+  sensitive   = true
+}
+
+variable "fashionjobs_status_webhook_url" {
+  type        = string
+  description = "Optional separate Discord webhook for FashionJobs ops messages. Empty = use the alert channel."
+  default     = ""
+  sensitive   = true
+}
+
+variable "fashionjobs_poll_interval_sec" {
+  type        = number
+  description = "Seconds between FashionJobs Stage listing polls."
+  default     = 600
+
+  validation {
+    condition     = var.fashionjobs_poll_interval_sec > 0
+    error_message = "fashionjobs_poll_interval_sec must be positive."
+  }
+}
+
+variable "fashionjobs_heartbeat_at" {
+  type        = string
+  description = "HH:MM America/Denver time for FashionJobs' daily heartbeat. Empty = use HEARTBEAT_INTERVAL_SEC."
+  default     = "07:00"
+
+  validation {
+    condition     = var.fashionjobs_heartbeat_at == "" || can(regex("^([01][0-9]|2[0-3]):[0-5][0-9]$", var.fashionjobs_heartbeat_at))
+    error_message = "fashionjobs_heartbeat_at must be empty or an HH:MM 24-hour time."
   }
 }
 
