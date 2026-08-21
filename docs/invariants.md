@@ -51,23 +51,26 @@ reintroduce that bug for the next non-standard gateway code.
 - `test_retryable_covers_rate_limits_5xx_and_unknown_but_not_a_bad_request`
 - `test_a_transport_error_with_no_status_is_treated_as_retryable`
 
-## 3. A missing baseline and an unparseable one mean opposite things
+## 3. A missing baseline and an unusable one mean opposite things
 
 `state.py`
 
-`load_state` returns `keys=None, corrupt=False` for a missing file and
-`keys=None, corrupt=True` for one that exists and does not parse. Both suppress alerts
-on that tick, so collapsing them into a single "no baseline" looks harmless.
+`load_state` returns `keys=None, corrupt=False` only for a missing file and
+`keys=None, corrupt=True` when one exists but cannot be read as a key array. Both
+suppress alerts on that tick, so collapsing them into a single "no baseline" looks
+harmless.
 
-It is not. Missing is a normal first boot. A file that exists and does not parse means
-the baseline is *gone*, this boot re-baselines silently, and everything currently open
-goes unannounced. Nothing can recover those keys, so the only useful response is to say
-so loudly.
+It is not. Missing is a normal first boot. An unreadable file (including wrong
+ownership or a directory at the configured path), malformed JSON, or valid JSON of the
+wrong shape means the baseline is *gone*, this boot re-baselines silently, and
+everything currently open goes unannounced. Nothing can recover those keys, so the only
+useful response is to say so loudly.
 
 An empty array is a **baseline**, not a first run — `echo '[]' > state.json` is the
 supported way to ask for the current backlog.
 
 - `test_missing_file_reads_as_first_run_and_is_not_corrupt`
+- `test_an_unreadable_file_reads_as_first_run_AND_reports_corrupt`
 - `test_an_unparseable_file_reads_as_first_run_AND_reports_corrupt`
 - `test_an_empty_array_is_a_baseline_not_a_first_run`
 
@@ -205,6 +208,13 @@ minute and meridiem assembled by hand are what the parity harness proves byte-id
 
 `_RANGE_SEP` is an en dash (U+2013) and the day separator is `·` (U+00B7). Both are
 contracts with the reference output, not typography.
+
+The ordinary rendering assertions run under the host locale and therefore do not, by
+themselves, enforce this rule. The locale test switches `LC_TIME` to each available
+non-English fixture, proves `strftime` diverges, and proves both table-based renderers
+do not.
+
+- `test_explicit_date_tables_ignore_lc_time_when_strftime_does_not`
 
 ---
 

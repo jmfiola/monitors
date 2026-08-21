@@ -20,10 +20,10 @@ class LoadedState:
 
     `keys is None` means "no usable baseline, treat this as a first run". `corrupt`
     separates the two ways that happens, because they mean opposite things: missing
-    is a normal first boot, while a file that exists and does not parse means the
-    baseline is *gone* and this boot will re-baseline silently — the failure that
-    looks exactly like everything being fine. Nothing can recover the lost keys, so
-    the only useful response is for the runner to say so.
+    is a normal first boot, while a file that exists but cannot be read as a key array
+    means the baseline is *gone* and this boot will re-baseline silently — the failure
+    that looks exactly like everything being fine. Nothing can recover the lost keys,
+    so the only useful response is for the runner to say so.
     """
 
     keys: set[str] | None
@@ -31,15 +31,17 @@ class LoadedState:
 
 
 def load_state(path: str) -> LoadedState:
-    """Load the previous key set, distinguishing missing from unparseable.
+    """Load the previous key set, distinguishing missing from unusable.
 
     An empty array loads as an empty *set*, not as None — that is what makes
     `echo '[]' > state.json` the supported way to ask for the current backlog.
     """
     try:
         raw = Path(path).read_text(encoding="utf-8")
-    except OSError:
+    except FileNotFoundError:
         return LoadedState(keys=None, corrupt=False)
+    except OSError:
+        return LoadedState(keys=None, corrupt=True)
     try:
         parsed = json.loads(raw)
     except ValueError:

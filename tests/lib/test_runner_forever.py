@@ -98,6 +98,33 @@ async def test_the_loop_baselines_then_alerts_and_persists(tmp_path: Path) -> No
     assert harness.slept == [10, 10]  # jitter 0 => exactly the interval
 
 
+async def test_a_successful_tick_reports_its_tracked_item_count_in_the_heartbeat(
+    tmp_path: Path,
+) -> None:
+    payloads: list[Payload] = []
+
+    async def collect(_url: str, payload: Payload) -> None:
+        payloads.append(payload)
+
+    items = [Thing("a"), Thing("b")]
+    harness = Harness()
+    await run_forever(
+        ScriptedMonitor([items, items]),
+        cfg_for(tmp_path / "state.json", HEARTBEAT_INTERVAL_SEC="10"),
+        poster=collect,
+        sleep=harness.sleep,
+        now_unix=harness.now,
+        rand=lambda: 0.5,
+        log=harness.logged.append,
+        max_ticks=2,
+    )
+
+    assert len(payloads) == 1
+    description = payloads[0].embeds[0].description
+    assert description is not None
+    assert "tracking 2 thing(s)" in description
+
+
 async def test_a_fault_escalates_backoff_and_leaves_the_baseline_alone(tmp_path: Path) -> None:
     state = tmp_path / "state.json"
     state.write_text('["a"]', encoding="utf-8")
@@ -230,8 +257,8 @@ async def test_a_state_write_failure_is_logged_and_the_loop_continues(
 
 async def test_a_corrupt_baseline_file_says_so(tmp_path: Path) -> None:
     # Missing and corrupt both read as first run, and they mean opposite things.
-    # Corrupt means everything open right now goes unannounced — the failure that
-    # looks exactly like everything being fine.
+    # Corrupt or unreadable means everything open right now goes unannounced — the
+    # failure that looks exactly like everything being fine.
     state = tmp_path / "state.json"
     state.write_text("not json{{{", encoding="utf-8")
     harness = Harness()
@@ -247,7 +274,7 @@ async def test_a_corrupt_baseline_file_says_so(tmp_path: Path) -> None:
         max_ticks=1,
     )
 
-    assert any("did not parse" in line for line in harness.logged)
+    assert any("could not be read" in line for line in harness.logged)
     assert harness.posted == []  # a corrupt baseline still suppresses, or it floods the channel
 
 

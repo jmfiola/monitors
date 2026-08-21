@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from monitor.health import init_health, is_stalled, should_alert_stall, should_heartbeat
+from monitor.health import init_health, should_alert_stall, should_heartbeat
 
 # America/Denver wall-clock instants, MST (UTC-7) in December.
 DEC1_0600 = 1796130000
@@ -20,17 +20,8 @@ def test_init_seeds_both_clocks_so_neither_fires_at_boot() -> None:
     assert h.consecutive_failures == 0
     assert h.items_tracked == 0
     assert h.death_alerted is False
-    assert is_stalled(h, 1000, 600) is False
+    assert should_alert_stall(h, 1000, 600, 3600) is False
     assert should_heartbeat(h, 1000, 86400) is False
-
-
-def test_is_stalled_is_false_just_under_the_threshold() -> None:
-    assert is_stalled(init_health(1000), 1599, 600) is False
-
-
-def test_is_stalled_is_true_at_exactly_the_threshold() -> None:
-    # >= : the boundary instant itself counts as stalled.
-    assert is_stalled(init_health(1000), 1600, 600) is True
 
 
 def test_heartbeat_is_not_due_before_the_interval_elapses() -> None:

@@ -21,6 +21,7 @@ without sleeping and without patching a module global.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 import re
@@ -645,11 +646,20 @@ def test_self_client_is_touched_from_exactly_one_place_in_the_source() -> None:
     A send site that calls `self._client.request` directly bypasses `_send`'s guard
     around `httpx.RemoteProtocolError`, which leaks a live `;jsessionid=` through
     the raw exception message (see `_send`'s docstring). That has happened once, so
-    the count is pinned rather than trusted. Counting call sites in the source text is
-    what a new, unguarded call site would actually add; a behavioural test could
-    only catch this by contriving every guarded path to raise, which the rest of
-    this file already does per-guard, not by construction the way this one does.
+    the count is pinned rather than trusted. The AST count includes both direct calls
+    and aliases such as `client = self._client`; a behavioural test could only catch
+    this by contriving every guarded path to raise, which the rest of this file
+    already does per-guard, not by construction the way this one does.
     """
     source = Path(inspect.getfile(SfeClient)).read_text(encoding="utf-8")
     call_sites = re.findall(r"await self\._client\.", source)
     assert len(call_sites) == 1
+    client_touches = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+        and node.attr == "_client"
+    ]
+    assert len(client_touches) == 2  # assignment in __init__, use in _send

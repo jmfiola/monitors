@@ -11,6 +11,23 @@ def test_missing_file_reads_as_first_run_and_is_not_corrupt(tmp_path: Path) -> N
     assert loaded.corrupt is False
 
 
+@pytest.mark.parametrize("error_type", [PermissionError, IsADirectoryError])
+def test_an_unreadable_file_reads_as_first_run_AND_reports_corrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[OSError],
+) -> None:
+    def fail_read(*_args: object, **_kwargs: object) -> str:
+        raise error_type("state is unreadable")
+
+    monkeypatch.setattr(Path, "read_text", fail_read)
+
+    loaded = load_state(str(tmp_path / "state.json"))
+
+    assert loaded.keys is None
+    assert loaded.corrupt is True
+
+
 def test_round_trips_a_key_set(tmp_path: Path) -> None:
     path = str(tmp_path / "rt.json")
     save_state(path, {"2026-12-01 10:30", "2026-12-02 09:00"})

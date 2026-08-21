@@ -19,7 +19,7 @@ lib/monitor/src/monitor/
 ├── config.py    env_* readers, RunnerConfig, ConfigError
 ├── state.py     load_state / save_state — the seen-key baseline
 ├── timing.py    system_now, with_jitter, next_backoff
-├── health.py    HealthState, is_stalled, should_alert_stall, should_heartbeat
+├── health.py    HealthState, should_alert_stall, should_heartbeat
 ├── discord.py   post(), heartbeat / status embeds, retry classification
 └── runner.py    run_tick and run_forever — the loop
 

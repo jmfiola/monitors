@@ -53,24 +53,22 @@ async def run_tick[Item](
     all while alerting was merely degraded.
     """
     items = await monitor.fetch()
-    current_keys = {monitor.key(item) for item in items}
-
-    if is_first_run:
-        return current_keys
 
     # De-duplicated by key, which the TypeScript does not do. melanzana's month
     # enumeration pads and therefore overlaps, so one slot can arrive twice in a
     # single tick — and a duplicate would inflate the alert's own "N open slot(s)"
-    # count and repeat its day-card line. The baseline was always a set and so was
-    # never affected; only the rendered message was.
-    fresh: list[Item] = []
-    fresh_keys: set[str] = set()
+    # count and repeat its day-card line. Keep the first item, matching the former
+    # fresh-item loop, and compute each key once.
+    keyed_items: dict[str, Item] = {}
     for item in items:
-        key = monitor.key(item)
-        if key in previous_keys or key in fresh_keys:
-            continue
-        fresh_keys.add(key)
-        fresh.append(item)
+        keyed_items.setdefault(monitor.key(item), item)
+    current_keys = set(keyed_items)
+
+    if is_first_run:
+        return current_keys
+
+    fresh_keys = current_keys - previous_keys
+    fresh = [item for key, item in keyed_items.items() if key in fresh_keys]
 
     if not fresh:
         return current_keys
@@ -308,7 +306,7 @@ async def run_forever[Item](
         # Missing and corrupt both re-baseline, and they mean opposite things.
         # Nothing can recover the lost keys, so the only useful response is to say so.
         emit(
-            f"{cfg.state_path} exists but did not parse as a key array — "
+            f"{cfg.state_path} could not be read as a key array — "
             f"re-baselining silently; anything open right now will not be announced"
         )
 
@@ -342,6 +340,8 @@ async def run_forever[Item](
     while max_ticks is None or ticks < max_ticks:
         ticks += 1
         tick_unix = now_unix()
+        outcome: Literal["success", "busy", "failure"]
+        items_tracked = health.items_tracked
         try:
             current_keys = await run_tick(
                 monitor,
@@ -359,63 +359,46 @@ async def run_forever[Item](
             # real fault arriving later still climbs from where it left off.
             delay = with_jitter(cfg.poll_interval_sec, cfg.poll_jitter_pct, rand)
             emit(f"tick failed (source busy elsewhere), retrying in {round(delay)}s: {err}")
-            health = await run_liveness(
-                cfg,
-                health,
-                outcome="busy",
-                items_tracked=health.items_tracked,
-                now=tick_unix,
-                heartbeat_extras=monitor.heartbeat_extras,
-                poster=poster,
-                log=emit,
-            )
-            await sleep(delay)
-            continue
+            outcome = "busy"
         except Exception as err:  # one response to every fault
             backoff = next_backoff(backoff, cfg.poll_interval_sec, cfg.max_backoff_sec)
             emit(f"tick failed, backing off {backoff}s: {err}")
-            health = await run_liveness(
-                cfg,
-                health,
-                outcome="failure",
-                items_tracked=health.items_tracked,
-                now=tick_unix,
-                heartbeat_extras=monitor.heartbeat_extras,
-                poster=poster,
-                log=emit,
-            )
-            await sleep(backoff)
-            continue
+            delay = backoff
+            outcome = "failure"
+        else:
+            # The in-memory baseline advances *before* the write is attempted. A
+            # persistently unwritable state_path would otherwise re-alert the same items
+            # every tick, forever. `first_run` moves for the same reason and matters
+            # more: stuck at true, a genuinely new item on a later tick would be
+            # silently swallowed.
+            previous_keys = current_keys
+            first_run = False
 
-        # The in-memory baseline advances *before* the write is attempted. A
-        # persistently unwritable state_path would otherwise re-alert the same items
-        # every tick, forever. `first_run` moves for the same reason and matters
-        # more: stuck at true, a genuinely new item on a later tick would be
-        # silently swallowed.
-        previous_keys = current_keys
-        first_run = False
+            try:
+                save_state(cfg.state_path, current_keys)
+            except OSError as err:
+                # Durability is best-effort. Reporting this as a *poll* failure would
+                # throttle polling, latch a false death alert, and suppress the
+                # heartbeat, all while alerts were arriving normally.
+                emit(
+                    f"state write to {cfg.state_path} failed ({err}); continuing on the "
+                    f"in-memory baseline — a restart will re-baseline and silently "
+                    f"suppress everything currently open, so fix this"
+                )
 
-        try:
-            save_state(cfg.state_path, current_keys)
-        except OSError as err:
-            # Durability is best-effort. Reporting this as a *poll* failure would
-            # throttle polling, latch a false death alert, and suppress the
-            # heartbeat, all while alerts were arriving normally.
-            emit(
-                f"state write to {cfg.state_path} failed ({err}); continuing on the "
-                f"in-memory baseline — a restart will re-baseline and silently "
-                f"suppress everything currently open, so fix this"
-            )
+            backoff = 0.0
+            delay = with_jitter(cfg.poll_interval_sec, cfg.poll_jitter_pct, rand)
+            outcome = "success"
+            items_tracked = len(current_keys)
 
-        backoff = 0.0
         health = await run_liveness(
             cfg,
             health,
-            outcome="success",
-            items_tracked=len(current_keys),
+            outcome=outcome,
+            items_tracked=items_tracked,
             now=tick_unix,
             heartbeat_extras=monitor.heartbeat_extras,
             poster=poster,
             log=emit,
         )
-        await sleep(with_jitter(cfg.poll_interval_sec, cfg.poll_jitter_pct, rand))
+        await sleep(delay)
