@@ -131,6 +131,11 @@ class _FashionJobsPageParser(HTMLParser):
                         f"invalid publication timestamp: {value}"
                     ) from error
 
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        if tag not in _VOID_TAGS:
+            self.handle_endtag(tag)
+
     def handle_endtag(self, tag: str) -> None:
         if self._capture is not None and self._capture[1] == self._depth:
             kind, _, parts = self._capture

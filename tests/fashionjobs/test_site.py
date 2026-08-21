@@ -47,6 +47,18 @@ def test_void_tags_inside_card_do_not_prevent_extraction() -> None:
     assert [job.job_id for job in page.jobs] == [12000001, 12000002, 12000003]
 
 
+def test_self_closing_void_tag_inside_card_does_not_prevent_extraction() -> None:
+    html = fixture("stage-page-1.html").replace(
+        '<div class="job-card job-card__wrapper job-card__wrapper--col">',
+        '<div class="job-card job-card__wrapper job-card__wrapper--col"><img src="logo.png" />',
+        1,
+    )
+
+    page = parse_page(html, expected_url=STAGE_URL)
+
+    assert [job.job_id for job in page.jobs] == [12000001, 12000002, 12000003]
+
+
 def test_positive_stage_count_without_finalized_jobs_raises() -> None:
     html = fixture("stage-page-1.html").replace(
         "job-card job-card__wrapper job-card__wrapper--col", "not-a-job-card"
