@@ -171,7 +171,7 @@ variable "fashionjobs_discord_webhook_url" {
   sensitive   = true
 
   validation {
-    condition     = can(regex("^https://[^/[:space:]]+", var.fashionjobs_discord_webhook_url))
+    condition     = can(regex("^https://[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+(:[0-9]{1,5})?(/[^[:space:]]*)?$", var.fashionjobs_discord_webhook_url))
     error_message = "fashionjobs_discord_webhook_url must be an https:// URL."
   }
 }
@@ -183,7 +183,7 @@ variable "fashionjobs_status_webhook_url" {
   sensitive   = true
 
   validation {
-    condition     = var.fashionjobs_status_webhook_url == "" || can(regex("^https://[^/[:space:]]+", var.fashionjobs_status_webhook_url))
+    condition     = var.fashionjobs_status_webhook_url == "" || can(regex("^https://[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+(:[0-9]{1,5})?(/[^[:space:]]*)?$", var.fashionjobs_status_webhook_url))
     error_message = "fashionjobs_status_webhook_url must be empty or an https:// URL."
   }
 }
