@@ -36,7 +36,7 @@ Discord delivery.
 
 ```bash
 uv sync
-uv run pytest -q                                   # 350
+uv run pytest -q                                   # 374
 uv run mypy --strict lib apps tests tools
 uv run ruff check . && uv run ruff format --check .
 ./tools/parity-diff.sh                             # needs node + the sibling repos
