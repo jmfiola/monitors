@@ -11,6 +11,20 @@ any difference in the output is a difference in the *implementations*. Verified 
 melanzana's harness: Node's JSON.stringify(canon(x), null, 2) and this
 json.dumps(..., sort_keys=True, indent=2, ensure_ascii=False) agree byte for byte.
 
+No expected output is written down on either side. Every literal here is an *input*
+-- Job fields, epochs, clock integers, fixture names -- or an import from production
+code, and every rendered byte comes from each language's own production functions.
+That is the property that makes an empty diff mean something: there is nothing for
+the two sides to agree on except behaviour.
+
+**Keep floats out of payloads.** A 30-value probe found exactly one place these two
+serializers disagree: a whole-valued float prints `3.0` in Python and `3` in Node.
+Nothing float-valued reaches a payload today (`uptime_hours` uses `//`), so this is
+latent rather than live -- but the first float that does will produce a diff that
+looks like a port regression and is really a serializer difference. The direction is
+at least fail-safe: Node can never emit `3.0`, so it fails loudly rather than
+silently matching.
+
 **There is deliberately no busy case**, though the brief's numbering left room for
 one at 9 (death and recovery take 9 and 10 here instead). The TypeScript has no
 busy Discord payload at all -- its only stall message is the death branch -- so a
