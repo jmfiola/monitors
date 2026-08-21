@@ -41,6 +41,15 @@ def html_response(request: httpx.Request, body: str) -> httpx.Response:
     )
 
 
+def with_first_card_appearances(html: str, appearances: int) -> str:
+    list_start = html.index(">", html.index('<ul class="job-list">')) + 1
+    card_start = html.index("<li ", list_start)
+    card_end = html.index("</li>", card_start) + len("</li>")
+    list_end = html.index("</ul>", card_end)
+    first_card = html[card_start:card_end]
+    return html[:list_start] + (first_card * appearances) + html[list_end:]
+
+
 def test_stage_route_is_fixed_and_has_no_keyword_or_location_query() -> None:
     assert STAGE_URL == "https://fr.fashionjobs.com/fr/contrat/Stage,5.html"
     assert page_url(1) == STAGE_URL
@@ -141,6 +150,28 @@ def test_positive_count_with_insufficient_cards_requires_end_pagination() -> Non
         parse_page(without_pagination, expected_url=STAGE_URL)
 
 
+def test_page_one_with_more_results_requires_a_later_end_page() -> None:
+    html = (
+        fixture("stage-page-1.html")
+        .replace(f'<a rel="next" href="{page_url(2)}">Suivant</a>', "", 1)
+        .replace(
+            f'<a rel="end" href="{page_url(42)}">42</a>',
+            f'<a rel="end" href="{STAGE_URL}">1</a>',
+            1,
+        )
+    )
+
+    with pytest.raises(FashionJobsParseError, match=r"page 1.*later end page"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_page_one_with_every_result_rejects_later_pagination() -> None:
+    html = fixture("stage-page-1.html").replace("Stage (1266)", "Stage (3)")
+
+    with pytest.raises(FashionJobsParseError, match=r"page 1.*all declared results"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
 def test_positive_count_equal_to_cards_allows_a_single_page() -> None:
     html = fixture("stage-page-1.html").replace("Stage (1266)", "Stage (3)")
     single_page = html[: html.index('<nav class="pagination">')] + "</body></html>"
@@ -153,11 +184,35 @@ def test_positive_count_equal_to_cards_allows_a_single_page() -> None:
     assert page.last_page == 1
 
 
-def test_positive_count_less_than_stage_cards_fails() -> None:
+def test_positive_count_less_than_unique_stage_ids_fails() -> None:
     html = fixture("stage-page-1.html").replace("Stage (1266)", "Stage (2)")
 
-    with pytest.raises(FashionJobsParseError, match=r"fewer results.*Stage job cards"):
+    with pytest.raises(FashionJobsParseError, match=r"fewer results.*unique Stage job IDs"):
         parse_page(html, expected_url=STAGE_URL)
+
+
+def test_duplicate_appearances_do_not_satisfy_a_larger_result_count() -> None:
+    html = with_first_card_appearances(fixture("stage-page-1.html"), 3).replace(
+        "Stage (1266)", "Stage (3)"
+    )
+    without_pagination = html[: html.index('<nav class="pagination">')] + "</body></html>"
+
+    with pytest.raises(FashionJobsParseError, match="end pagination"):
+        parse_page(without_pagination, expected_url=STAGE_URL)
+
+
+def test_duplicate_appearances_of_the_only_result_are_valid() -> None:
+    html = with_first_card_appearances(fixture("stage-page-1.html"), 2).replace(
+        "Stage (1266)", "Stage (1)"
+    )
+    single_result = html[: html.index('<nav class="pagination">')] + "</body></html>"
+
+    page = parse_page(single_result, expected_url=STAGE_URL)
+
+    assert [job.job_id for job in page.jobs] == [12000001, 12000001]
+    assert page.result_count == 1
+    assert page.next_url is None
+    assert page.last_page == 1
 
 
 def test_missing_third_muted_value_raises() -> None:

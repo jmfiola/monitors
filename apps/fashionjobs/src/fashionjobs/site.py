@@ -328,7 +328,8 @@ class _FashionJobsPageParser(HTMLParser):
     def result(self) -> ParsedPage:
         if not all((self._html_started, self._html_closed, self._body_started, self._body_closed)):
             raise FashionJobsParseError("FashionJobs response was not a complete HTML document")
-        if _STAGE_PAGE_URL.fullmatch(self._expected_url) is None:
+        page_match = _STAGE_PAGE_URL.fullmatch(self._expected_url)
+        if page_match is None:
             raise FashionJobsParseError("FashionJobs requested URL did not match the Stage route")
         if self._canonical_url is None or _STAGE_PAGE_URL.fullmatch(self._canonical_url) is None:
             raise FashionJobsParseError("FashionJobs canonical URL did not match the Stage route")
@@ -345,13 +346,20 @@ class _FashionJobsPageParser(HTMLParser):
         if count_match is None:
             raise FashionJobsParseError("FashionJobs page did not expose a Stage result count")
         result_count = int(count_match.group(1).replace(" ", ""))
+        next_url = self._pagination_url(self._next_url, "next")
+        end_url = self._pagination_url(self._end_url, "end")
+        end_match = _STAGE_PAGE_URL.fullmatch(end_url) if end_url is not None else None
+        last_page = int(end_match.group(1)) if end_match is not None and end_match.group(1) else 1
+        current_page = int(page_match.group(1)) if page_match.group(1) else 1
+        unique_job_count = len({job.job_id for job in self._jobs})
+
         if result_count == 0 and self._completed_cards > 0:
             raise FashionJobsParseError("FashionJobs claimed zero results but exposed job cards")
         if result_count == 0 and (self._next_url is not None or self._end_url is not None):
             raise FashionJobsParseError("FashionJobs claimed zero results but exposed pagination")
-        if 0 < result_count < len(self._jobs):
+        if 0 < result_count < unique_job_count:
             raise FashionJobsParseError(
-                "FashionJobs claimed fewer results than exposed Stage job cards"
+                "FashionJobs claimed fewer results than exposed unique Stage job IDs"
             )
         if result_count > 0 and self._completed_cards == 0:
             raise FashionJobsParseError("FashionJobs claimed results but exposed no job cards")
@@ -359,13 +367,16 @@ class _FashionJobsPageParser(HTMLParser):
             raise FashionJobsParseError(
                 "FashionJobs claimed results but exposed no Stage job cards"
             )
-        if result_count > len(self._jobs) and self._end_url is None:
+        if result_count > unique_job_count and end_url is None:
             raise FashionJobsParseError("FashionJobs result count requires an end pagination URL")
-
-        next_url = self._pagination_url(self._next_url, "next")
-        end_url = self._pagination_url(self._end_url, "end")
-        end_match = _STAGE_PAGE_URL.fullmatch(end_url) if end_url is not None else None
-        last_page = int(end_match.group(1)) if end_match is not None and end_match.group(1) else 1
+        if current_page == 1 and result_count > unique_job_count and last_page == 1:
+            raise FashionJobsParseError(
+                "FashionJobs page 1 with unseen results requires a later end page"
+            )
+        if current_page == 1 and result_count == unique_job_count and last_page > 1:
+            raise FashionJobsParseError(
+                "FashionJobs page 1 pagination contradicts all declared results being visible"
+            )
 
         return ParsedPage(
             jobs=tuple(self._jobs),
