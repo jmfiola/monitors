@@ -1033,98 +1033,35 @@ A class, not a closure-returning factory: the TypeScript used a closure to hold 
 
 - [ ] **Step 1: Write the failing test**
 
-Use `httpx.MockTransport`, as `tests/lib/test_discord.py` does. The behaviours that must be pinned:
+**These tests are translations, not inventions.** The assertions already exist in
+`~/personal/jeffco-sub-monitor/test/sfe.test.ts` (40 cases across the pure functions
+and the client); roughly 20 belong here. Read that file and port each case, keeping
+its assertions. Use `httpx.MockTransport` for the transport, as `tests/lib/test_discord.py`
+does, and a mutable `clock = [1000]` list with `now_unix=lambda: clock[0]` so time can
+be advanced without sleeping.
 
-```python
-async def test_the_happy_path_logs_in_once_and_reuses_the_token() -> None:
-    # ensureToken must not re-login while the token is inside its margin, or a
-    # 10-second poll cadence becomes a login hammer.
-    calls: list[str] = []
-    ...
-    assert calls.count("/logOnAction.do") == 1
+This table is the checklist of what must survive translation — every row is a real
+behaviour with a reason, and a row you cannot find in the TypeScript is a row to raise
+with me rather than skip:
 
-
-async def test_a_401_re_authenticates_once_and_retries() -> None:
-    ...
-
-
-async def test_a_second_401_gives_up_rather_than_hammering_login() -> None:
-    # A credential problem must fail the tick and enter backoff, not become a loop.
-    ...
-
-
-async def test_a_307_refuses_rather_than_re_sending_the_pin() -> None:
-    # 307/308 preserve method and body, so following one would re-POST the PIN to
-    # wherever Location points.
-    with pytest.raises(SfeLoginError, match="307"):
-        ...
-
-
-async def test_an_off_origin_redirect_is_refused() -> None:
-    # A browser would never carry SFE's cookies cross-origin on a redirect, and this
-    # also blocks a foreign page planting its own `var token = 'Bearer …'` for
-    # extract_token to pick up. The message must not name the host — SFE URLs carry
-    # ;jsessionid=.
-    with pytest.raises(SfeLoginError) as exc:
-        ...
-    assert "evil" not in str(exc.value)
-
-
-async def test_an_html_body_is_refused_before_the_status_check() -> None:
-    # An Imperva challenge or a Tomcat error page can arrive with a 200 and must
-    # never be parsed as data. The body is never quoted, not even a slice: SFE error
-    # pages embed a live ;jsessionid= in the form action.
-    with pytest.raises(SfeShapeError) as exc:
-        ...
-    assert "jsessionid" not in str(exc.value)
-    assert "bytes" in str(exc.value)
-
-
-async def test_the_api_message_is_surfaced_but_the_body_is_not() -> None:
-    # "Start date must be in the future." is the specific, debuggable part; the rest
-    # might be a credential.
-    with pytest.raises(SfeHttpError) as exc:
-        ...
-    assert "Start date must be in the future." in str(exc.value)
-
-
-async def test_three_login_failures_pause_further_attempts_for_an_hour() -> None:
-    # THE most important test in this file. A wrong PIN retried on a 60s cadence is
-    # ~1,440 attempts a day against an account a real person needs. Three tries,
-    # then one an hour.
-    clock = [1000]
-    ...
-    # the fourth call must not touch the network at all
-    assert login_attempts == 3
-    with pytest.raises(SfeLoginError, match="suppressed"):
-        await client.fetch_available_jobs()
-    clock[0] += 3600
-    # ...and it resumes afterwards
-    assert login_attempts == 4
-
-
-async def test_a_successful_login_clears_the_failure_counter() -> None:
-    ...
-
-
-async def test_a_token_inside_its_refresh_margin_triggers_a_re_login() -> None:
-    # 120s before exp, not on 401: eating a 401 costs a wasted request every time.
-    ...
-
-
-async def test_a_fresh_token_already_inside_the_margin_warns_about_the_clock() -> None:
-    # This is what a container with a skewed clock looks like, and without the
-    # warning it presents as "every call re-authenticates" with no explanation.
-    ...
-
-
-async def test_the_pin_never_appears_in_any_log_line_or_error() -> None:
-    # Sweep every captured log line and every raised message for the PIN and the
-    # user id. The PIN closely resembles the id, so leaking the id leaks most of it.
-    ...
-```
-
-Translate the remaining client cases from `sfe.test.ts`, which has 40 total across pure and client.
+| Test | Must pin |
+| --- | --- |
+| happy path | one login, then the token reused across calls. A 60s cadence that re-logs in every tick is a login hammer. |
+| 401 once | one re-auth and one retry, transparently. |
+| 401 twice | gives up and raises. A credential problem must fail the tick and enter backoff, not loop. |
+| 307/308 | raises without following. Following would re-POST the PIN to wherever `Location` points. Message names the status only. |
+| off-origin `Location` | raises. A browser would not carry SFE's cookies cross-origin, and this also blocks a foreign page planting its own `var token = 'Bearer …'`. The message must **not** contain the foreign host. |
+| missing / unparseable `Location` | raises, status only. |
+| second redirect | raises. One hop is the verified flow; a chain means a changed login or an Imperva challenge. |
+| HTML body with a 200 | raises **before** the status check. An Imperva challenge or Tomcat page must never be parsed as data. The message carries the status and byte count and **never** a body slice — SFE error pages embed a live `;jsessionid=`. |
+| JSON error body | the API's own `message` is surfaced (`"Start date must be in the future."`) but nothing else of the body is. |
+| non-JSON success body | raises, naming only the length. |
+| 3 login failures | the fourth call makes **no network request at all** and raises "suppressed"; after `LOGIN_BACKOFF_SEC` it resumes. **The most important test in this file** — a wrong PIN on the poll cadence is ~1,440 attempts a day against an account a real person works from. |
+| success after failures | the failure counter resets to zero. |
+| token inside the refresh margin | re-logs in 120s before `exp` rather than eating a 401. |
+| fresh token already inside the margin | logs the clock-skew warning. Without it, a skewed container clock presents as "every call re-authenticates" with no explanation. |
+| credential sweep | assert the PIN **and** the user id appear in no captured log line and no raised message. The PIN closely resembles the id, so leaking the id leaks most of the PIN. |
+| `fetch_job_detail` on a filled job | returns 200 and renders completely — verified against the real service, so a job claimed between the list fetch and this call still alerts. |
 
 - [ ] **Step 2: Run it and see it fail, then implement**
 
@@ -1313,51 +1250,22 @@ def test_the_zone_is_not_read_from_the_environment() -> None:
     assert load_config({**BASE, "TIMEZONE": "Europe/Berlin"}).timezone == "America/Denver"
 ```
 
-`test_monitor.py` — the four contract methods, with `httpx.MockTransport`:
+`test_monitor.py` — the four contract methods. Translate the app-level half of
+`~/personal/jeffco-sub-monitor/test/index.test.ts` (the loop half is library-owned and
+already covered in `tests/lib/`). Use `httpx.MockTransport` and pinned epochs. Required
+cases and what each pins:
 
-```python
-async def test_fetch_returns_only_high_school_jobs_and_accumulates_gaps() -> None:
-    ...
-    assert [j.job_id for j in jobs] == [...]
-    assert monitor.heartbeat_extras().fields is not None   # the gap was recorded
-
-
-async def test_gaps_accumulate_across_ticks_rather_than_being_replaced() -> None:
-    # An unrecognized school can appear in one poll and be claimed before the next,
-    # while the heartbeat carrying the report fires once a day — so keeping only the
-    # latest tick's names would drop exactly what the report exists to surface.
-    ...
-
-
-async def test_an_sfe_400_becomes_SourceBusy_so_the_runner_holds_cadence() -> None:
-    with pytest.raises(SourceBusy):
-        await monitor.fetch()
-
-
-async def test_an_sfe_500_does_not_become_SourceBusy() -> None:
-    with pytest.raises(SfeHttpError):
-        await monitor.fetch()
-
-
-def test_the_key_is_the_job_id_alone() -> None:
-    # Not a content hash: a job whose details are edited must not re-alert, and a
-    # job claimed then released MUST re-alert because that is a genuine new
-    # opportunity. Keying on the id gives both.
-    assert monitor.key(job(1026623)) == "1026623"
-
-
-async def test_render_returns_one_message_per_job_with_resolved_dates() -> None:
-    ...
-
-
-async def test_a_failed_detail_fetch_degrades_one_job_rather_than_the_tick() -> None:
-    # Under the library a render() raise withholds EVERY fresh key, so this matters
-    # more than it did in the TypeScript: one unreachable detail endpoint must not
-    # silence a whole tick.
-    ...
-    assert "approximate, check SFE" in messages[0].payload.embeds[0].description
-    assert len(messages) == 2      # the other job still rendered normally
-```
+| Test | Must pin |
+| --- | --- |
+| `fetch` filters to HS | only high-school jobs are returned, and only their keys can enter state — a non-HS job entering state would let a school-list edit resurrect stale ids as "new". |
+| `fetch` records gaps | an unmatched name reaches `heartbeat_extras()`. |
+| gaps accumulate | names persist across ticks rather than being replaced. A school can appear in one poll and be claimed before the next, while the heartbeat fires daily — keeping only the latest tick would drop exactly what the report exists to surface. |
+| SFE 400 → `SourceBusy` | so the runner holds cadence instead of escalating. |
+| SFE 500 stays `SfeHttpError` | a real fault must still earn backoff. |
+| `key` is the job id alone | not a content hash: an edited job must not re-alert, and a job claimed then released **must**, because that is a genuine new opportunity. |
+| `render` resolves dates per job | one message per job, each with its own date line. |
+| a failed detail fetch degrades one job | the other jobs still render normally, and the degraded one says "approximate, check SFE". Under the library a `render()` raise withholds **every** fresh key, so this matters more than it did in TypeScript. |
+| `heartbeat_extras` with no gaps | `fields == ()` and `footer_text is None`, so the library keeps its default footer. |
 
 - [ ] **Step 2: Run, fail, implement**
 
