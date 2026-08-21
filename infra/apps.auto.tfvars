@@ -10,7 +10,7 @@
 apps = {
   melanzana = {
     image     = "melanzana-monitor"
-    image_tag = "v1.2.0"
+    image_tag = "v2.0.0"
     memory    = "128m"
   }
 

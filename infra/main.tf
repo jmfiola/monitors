@@ -66,6 +66,7 @@ locals {
         STALL_ALERT_SEC        = tostring(var.stall_alert_sec)
       },
       var.melanzana_status_webhook_url != "" ? { STATUS_WEBHOOK_URL = var.melanzana_status_webhook_url } : {},
+      var.melanzana_heartbeat_at != "" ? { HEARTBEAT_AT = var.melanzana_heartbeat_at } : {},
     )
 
     jeffco = merge(
