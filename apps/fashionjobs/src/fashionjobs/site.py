@@ -7,6 +7,24 @@ from fashionjobs.types import FashionJob
 
 STAGE_LABEL = "Stage"
 STAGE_URL = "https://fr.fashionjobs.com/fr/contrat/Stage,5.html"
+_VOID_TAGS = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+)
 
 
 class FashionJobsError(RuntimeError):
@@ -66,7 +84,8 @@ class _FashionJobsPageParser(HTMLParser):
         self._depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        self._depth += 1
+        if tag not in _VOID_TAGS:
+            self._depth += 1
         attributes = dict(attrs)
         classes = set((attributes.get("class") or "").split())
 
@@ -146,6 +165,9 @@ class _FashionJobsPageParser(HTMLParser):
         count_match = re.search(r"\bStage\s*\(([\d\s]+)\)", " ".join(self._page_text))
         if count_match is None:
             raise FashionJobsParseError("Stage result count is missing")
+        result_count = int(count_match.group(1).replace(" ", ""))
+        if result_count > 0 and not self._jobs:
+            raise FashionJobsParseError("Stage results reported but no job cards were parsed")
         if self._end_url is None:
             raise FashionJobsParseError("last page link is missing")
         last_page_match = re.search(r",(\d+)\.html$", self._end_url)
@@ -154,7 +176,7 @@ class _FashionJobsPageParser(HTMLParser):
 
         return ParsedPage(
             jobs=tuple(self._jobs),
-            result_count=int(count_match.group(1).replace(" ", "")),
+            result_count=result_count,
             next_url=self._next_url,
             last_page=int(last_page_match.group(1)),
         )
@@ -169,7 +191,7 @@ class _FashionJobsPageParser(HTMLParser):
             card.title is None
             or card.url is None
             or card.company is None
-            or len(card.muted_values) < 2
+            or len(card.muted_values) < 3
             or card.published_at is None
         ):
             raise FashionJobsParseError("job card is missing a required field")
