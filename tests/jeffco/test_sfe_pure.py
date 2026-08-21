@@ -39,6 +39,7 @@ from jeffco.sfe import (
     parse_jobs,
     token_expiry_unix,
 )
+from jeffco.types import Job
 
 DENVER = "America/Denver"
 
@@ -133,6 +134,17 @@ def test_token_expiry_unix_rejects_a_payload_with_no_usable_exp() -> None:
         payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=")
         with pytest.raises(SfeTokenError):
             token_expiry_unix(f"h.{payload.decode()}.s")
+
+
+def test_token_expiry_unix_rejects_a_bool_exp_despite_bool_being_an_int_subclass() -> None:
+    # Python's bool is an int subclass, so `isinstance(exp, int)` alone would
+    # accept True/False as a claim value. token_expiry_unix guards this
+    # explicitly with `isinstance(exp, bool)` -- a check a naive port would
+    # drop as redundant, which is exactly how a deliberate defence gets
+    # deleted later as dead code.
+    payload = base64.urlsafe_b64encode(json.dumps({"exp": True}).encode()).rstrip(b"=")
+    with pytest.raises(SfeTokenError, match=r"(?i)exp"):
+        token_expiry_unix(f"h.{payload.decode()}.s")
 
 
 # --- build_available_filter (sfe.test.ts: describe('buildAvailableFilter')) -
@@ -235,9 +247,8 @@ def test_parse_jobs_drops_rows_missing_any_field_the_rest_of_the_pipeline_derefe
         good,
     ]
     jobs = parse_jobs(rows)
-    assert len(jobs) == 1
-    assert jobs[0].job_id == 7
-    assert jobs[0].location_name == "Y"
+    assert jobs == [Job(job_id=7, location_name="Y", job_start="2026-10-16T13:45Z",
+                         job_end="2026-10-16T21:30Z")]  # fmt: skip
 
 
 def test_parse_jobs_throws_when_the_body_is_not_an_array() -> None:
@@ -271,8 +282,8 @@ def test_parse_jobs_still_returns_the_one_good_row_out_of_a_mixed_batch() -> Non
     }
     rows = [{"locationName": "X", "jobStart": "a", "jobEnd": "b"}, good]  # no jobId
     jobs = parse_jobs(rows)
-    assert len(jobs) == 1
-    assert jobs[0].job_id == 7
+    assert jobs == [Job(job_id=7, location_name="Y", job_start="2026-10-16T13:45Z",
+                         job_end="2026-10-16T21:30Z")]  # fmt: skip
 
 
 # --- is_account_busy (sfe.test.ts: describe('isAccountBusy')) ----------------
