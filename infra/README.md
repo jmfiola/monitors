@@ -156,22 +156,35 @@ jsonPayload."cos.googleapis.com/container_name"="jeffco-monitor"
 
 **The container logs do not say which version produced them.** A `cos_containers` entry
 carries only `container_id`, `container_name`, `stream` and `message` — no image, no tag.
-The image *is* in `cos_system`'s container lifecycle events, so that is where a deploy
-history lives:
+The image *is* in `cos_system`'s container-start events, so a per-app query has to union
+the two streams to show both what an app said and what version said it:
 
 ```
-logName="projects/cobs-cloud/logs/cos_system"
-jsonPayload.MESSAGE:"container start"
-jsonPayload.MESSAGE:"monitor:v"
--jsonPayload.MESSAGE:"exec"
+(
+  logName="projects/cobs-cloud/logs/cos_containers"
+  AND jsonPayload."cos.googleapis.com/container_name"="jeffco-monitor"
+)
+OR
+(
+  logName="projects/cobs-cloud/logs/cos_system"
+  AND jsonPayload.MESSAGE:"container start"
+  AND jsonPayload.MESSAGE:"jeffco-sub-monitor:v"
+  AND -jsonPayload.MESSAGE:"exec"
+)
 ```
 
-One line per container start, e.g. `container start <id> (image=…/jeffco-sub-monitor:v2.0.2`.
-The `-exec` term matters: an ad-hoc `docker exec` into a container also logs the image, so
-without it a single memory probe can bury the actual deploys — 295 entries against 78.
+Interleaved, that reads as the deploy narrative: `SIGTERM received` → `container start
+(image=…:v2.0.2)` → `app config` → `started … firstRun=False`.
 
-Three saved queries exist in Logs Explorer (project `cobs-cloud`, location `global`):
-`melanzana-monitor-logs`, `jeffco-monitor-logs`, and `monitor-deploys` for the above.
+Two details bite. **The container name and the image name differ for jeffco** — container
+`jeffco-monitor`, image `jeffco-sub-monitor` — so the two halves cannot share one string.
+And **`-exec` is load-bearing**: an ad-hoc `docker exec` into a container also logs the
+image, so without it one memory probe buries the real deploys (measured: 295 matching
+entries against 78).
+
+Exactly two saved queries exist in Logs Explorer (project `cobs-cloud`, location
+`global`) — `melanzana-monitor-logs` and `jeffco-monitor-logs`, one per app, each
+carrying the union above. There is deliberately no third, cross-app query.
 
 `--order=asc` is handled by the script rather than passed through, because
 `gcloud logging read` **ignores `--freshness` when asked for ascending order** — it
