@@ -4,6 +4,13 @@ The library owns the loop. An app owns its source, its key, its alert rendering,
 its filtering, and its authentication. Four methods — see
 `lib/monitor/src/monitor/types.py`, the `Monitor` protocol.
 
+FashionJobs is the clearest example of that boundary. Its app-owned source parses the
+fixed France-wide `Stage` HTML route, proves the selected filter and required card and
+pagination structure on every page, and applies no role or keyword filter. Its numeric
+FJOB ID is the key. When an older listing is no longer present in the current HTML, the
+source returns a `KnownJob` identity placeholder so the shared runner's baseline stays
+monotonic. None of this adds methods to the four-method shared contract.
+
 **Order matters.** The registry repository is created by Terraform from the app
 list, so the tfvars entry comes before the image push, and the push comes before
 the deploy — otherwise the startup script finds no image.
@@ -15,7 +22,9 @@ the deploy — otherwise the startup script finds no image.
 4. `apps/<app>/src/<app>/` — `types.py`, the source client, `alert.py`,
    `config.py`, `monitor.py`, `main.py`. Copy melanzana's `main.py` and change the
    two constructor calls; it is the one file that is meant to be per-app, because
-   it is where the HTTP client is chosen.
+   it is where the HTTP client is chosen. Keep parsing and fixed product filters in
+   the app: FashionJobs owns its HTML parser, exact `Stage` filter, pagination
+   validation, and retained identity placeholders.
 5. `tests/<app>/` — the source client, the renderer, the config, the four methods.
 6. `infra/variables.tf` — one `sensitive = true` variable per credential, plus
    `<app>_heartbeat_at` if it should report at a fixed hour.

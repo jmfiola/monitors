@@ -216,6 +216,80 @@ do not.
 
 - `test_explicit_date_tables_ignore_lc_time_when_strftime_does_not`
 
+## 14. FashionJobs' product filter is fixed and proven from every HTML page
+
+`apps/fashionjobs/src/fashionjobs/site.py`
+
+The source is exactly the France-wide FashionJobs `Stage` HTML route. There is no
+keyword, role, title, company, category, region, department, city, or other location
+filter. The parser also requires the canonical route and checked structured contract
+filter ID `5`; a URL that merely looks plausible is not enough.
+
+Filtering a valid non-Stage card is deliberate defense against mixed upstream data.
+If the page declares positive Stage results but every valid card is non-Stage, the
+whole page fails. Likewise, a malformed card fails the page rather than disappearing
+from a healthy-looking partial result.
+
+- `test_stage_route_is_fixed_and_has_no_keyword_or_location_query`
+- `test_excludes_a_valid_non_stage_contract`
+- `test_a_complete_contract_filter_leak_fails_instead_of_looking_empty`
+- `test_a_malformed_card_fails_instead_of_being_skipped`
+
+## 15. FashionJobs pagination commits one monotonic identity transaction
+
+`apps/fashionjobs/src/fashionjobs/site.py`
+
+Missing state requires every declared page before the runner can create its silent
+baseline. Seeded reads may stop only at the first page with no ID unseen before that
+read. No page mutates committed IDs or records until every page required by that
+frontier succeeds, so a page-two error cannot bank page-one IDs.
+
+Numeric FJOB IDs never shrink when cards reorder or disappear. Full records remain
+available in memory when possible; otherwise `KnownJob` placeholders preserve the
+identity. Ordinary and promoted cards with one ID reconcile only when their core
+fields agree, preferring a direct `/emploi/` URL. Promoted `/redir/` cards are parsed
+from the result HTML but never crawled for identity; traversal requests only the
+fixed Stage pagination URLs.
+
+- `test_missing_state_fetches_every_declared_page`
+- `test_page_two_failure_discards_the_whole_candidate_read`
+- `test_seeded_frontier_stops_after_an_all_known_page`
+- `test_same_read_duplicate_does_not_extend_frontier_traversal`
+- `test_reordered_or_removed_cards_do_not_shrink_returned_ids`
+- `test_full_record_is_retained_when_it_disappears_from_the_site`
+- `test_extracts_ordinary_and_promoted_stage_cards`
+- `test_duplicate_ids_keep_the_direct_emploi_url`
+
+## 16. FashionJobs baseline and notification state never outrun delivery
+
+`apps/fashionjobs/src/fashionjobs/monitor.py` / `runner.py`
+
+The first complete read with no state is banked without alerts. A restart seeded by
+that persisted numeric-ID set does not duplicate alerts. Later listings produce one
+message each in `(published_at, job_id)` order. If a retryable Discord post fails, its
+covered ID stays out of state and is retried; it is committed only after successful
+delivery, without rolling back other successfully delivered messages.
+
+- `test_first_run_baselines_all_jobs_without_alerting`
+- `test_restart_with_persisted_ids_does_not_duplicate_alerts`
+- `test_failed_notification_is_withheld_then_retried_successfully`
+- `test_multiple_new_jobs_are_posted_in_deterministic_order`
+- `test_render_orders_new_jobs_by_timestamp_then_numeric_id`
+- `test_heartbeat_reports_the_tracked_listing_identity_count`
+
+## 17. FashionJobs source text cannot create a Discord mention
+
+`apps/fashionjobs/src/fashionjobs/alert.py`
+
+Each listing gets one embed with title and URL plus `Company`, `Location`, `Contract`,
+and `Published` fields. Source Markdown is escaped within Discord limits, and the
+payload always sends `allowed_mentions: {"parse": []}`. Removing that pairing turns
+an upstream title such as `@everyone` into a channel-wide ping.
+
+- `test_alert_contains_every_reliable_job_field`
+- `test_source_markdown_is_escaped_and_everyone_is_disabled`
+- `test_escaped_title_and_fields_respect_discord_limits_without_dangling_escape`
+
 ---
 
 ## The parity harness
@@ -223,6 +297,10 @@ do not.
 `tools/parity-diff.sh` renders every Discord payload both implementations can produce, on
 a frozen clock, and requires an empty diff. Three properties make that meaningful, and all
 three are easy to destroy:
+
+“Both implementations” means only the Melanzana and Jeffco Python/TypeScript pairs.
+FashionJobs has no sibling TypeScript implementation and must not be added to this
+harness; its committed fixtures and Python tests own that scope.
 
 **No expected output is written down on either side.** Every literal in both dump scripts
 is an *input* — item fields, epochs, clock integers, fixture names — or an import from

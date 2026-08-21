@@ -26,6 +26,9 @@ IPv4 address (~$0.005/hr), needed for outbound calls. No inbound ports are opene
 Per app, everything is derived from its key in `apps.auto.tfvars`: the container
 and systemd unit are `<app>-monitor`, the data volume is `/var/lib/<app>-data`,
 and the env file is `/etc/monitors/<app>.env` at `0600` inside a `0700` directory.
+For FashionJobs that means `fashionjobs-monitor`, persistent host state at
+`/var/lib/fashionjobs-data/state.json` mounted as `/data/state.json`, and the env file
+`/etc/monitors/fashionjobs.env`.
 
 ## Supervision: systemd, not konlet
 
@@ -43,6 +46,9 @@ Consequences worth knowing:
 - **`--memory` per app** is a leak backstop, not a tuning knob — set well above
   normal operation. There is no swap, so without a cap the kernel picks the OOM
   victim, and it may pick a healthy monitor over the leaking one.
+  FashionJobs adds a 128 MiB cap; the three declared caps are 128 MiB, 256 MiB, and
+  128 MiB, or 512 MiB total. That fits the `e2-micro`'s roughly 1 GiB while leaving
+  capacity for Container-Optimized OS, Docker, logging, and normal bursts.
 - **Deploys are selective.** The startup script compares each rendered unit and
   env file against what is on disk and restarts only what changed, so deploying
   one app does not interrupt the others.
@@ -82,6 +88,10 @@ wall-clock hour. It is wired conditionally, so leaving it empty falls back to
 `HEARTBEAT_INTERVAL_SEC` rather than passing an empty string — those are different
 behaviours.
 
+FashionJobs is configured to poll every 600 seconds; the shared runner applies its
+default 20 percent jitter. Its daily heartbeat is configured for `07:00`
+America/Denver.
+
 ```bash
 ./deploy.sh --plan      # plan only
 ./deploy.sh --verify    # verify only, change nothing
@@ -97,6 +107,10 @@ gcloud services enable compute.googleapis.com artifactregistry.googleapis.com
 cp terraform.tfvars.example terraform.tfvars   # then fill in the credentials
 terraform init
 ```
+
+Set `fashionjobs_discord_webhook_url` in the gitignored `terraform.tfvars`. The
+optional `fashionjobs_status_webhook_url` uses a separate ops channel when supplied
+and otherwise falls back to the alert webhook.
 
 The registries must exist before the host can pull anything, so create them
 first:
@@ -117,12 +131,31 @@ REGION=us-west1
 PROJECT=cobs-cloud
 gcloud auth configure-docker "$REGION-docker.pkg.dev"
 
-for app in melanzana jeffco; do
+for app in melanzana jeffco fashionjobs; do
   # image name and tag must match this app's entry in apps.auto.tfvars
   IMAGE="$REGION-docker.pkg.dev/$PROJECT/$app/<image>:<tag>"
   docker build --platform linux/amd64 --build-arg "APP=$app" -t "$IMAGE" .
   docker push "$IMAGE"
 done
+```
+
+### FashionJobs rollout status
+
+Nothing in the FashionJobs feature work was deployed, applied, pushed as an image,
+or restarted. `v2.1.0` is the configured release tag in `apps.auto.tfvars`, not a
+claim about the image currently running in production. Before a later, separately
+authorized deployment, an operator still must:
+
+1. supply `fashionjobs_discord_webhook_url` in the gitignored `terraform.tfvars`;
+2. build and push the `linux/amd64` FashionJobs image tagged `v2.1.0`; and
+3. run the normal authorized deployment workflow.
+
+From the repository root, the FashionJobs image step is:
+
+```bash
+IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.0"
+docker build --platform linux/amd64 --build-arg APP=fashionjobs -t "$IMAGE" .
+docker push "$IMAGE"
 ```
 
 If a build hangs with no output at all, the credential helper is stuck rather than the
@@ -139,6 +172,7 @@ interleaves them. `logs.sh` applies the right filter:
 ```bash
 ./logs.sh jeffco                            # newest 50 in the last hour
 ./logs.sh melanzana --freshness=6h
+./logs.sh fashionjobs --freshness=6h
 ./logs.sh jeffco --limit=200 --order=asc    # oldest first
 ```
 
@@ -170,6 +204,8 @@ container logs and images are not on it.
 gcloud compute ssh monitors --zone us-west1-b
 systemctl status jeffco-monitor
 journalctl -u jeffco-monitor -n 50
+systemctl status fashionjobs-monitor
+journalctl -u fashionjobs-monitor -n 50
 docker ps
 ```
 
@@ -183,3 +219,9 @@ Losing an app's `state.json` is survivable: the next run records a fresh silent
 baseline, so nothing is falsely alerted. It does mean everything currently open
 goes unannounced, which is usually what you want. `echo '[]' > state.json` is the
 supported way to ask for the current backlog instead.
+
+For FashionJobs, inspect the persistent state file on the host without changing it:
+
+```bash
+sudo ls -l /var/lib/fashionjobs-data/state.json
+```
