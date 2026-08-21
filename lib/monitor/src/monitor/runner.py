@@ -53,24 +53,22 @@ async def run_tick[Item](
     all while alerting was merely degraded.
     """
     items = await monitor.fetch()
-    current_keys = {monitor.key(item) for item in items}
-
-    if is_first_run:
-        return current_keys
 
     # De-duplicated by key, which the TypeScript does not do. melanzana's month
     # enumeration pads and therefore overlaps, so one slot can arrive twice in a
     # single tick — and a duplicate would inflate the alert's own "N open slot(s)"
-    # count and repeat its day-card line. The baseline was always a set and so was
-    # never affected; only the rendered message was.
-    fresh: list[Item] = []
-    fresh_keys: set[str] = set()
+    # count and repeat its day-card line. Keep the first item, matching the former
+    # fresh-item loop, and compute each key once.
+    keyed_items: dict[str, Item] = {}
     for item in items:
-        key = monitor.key(item)
-        if key in previous_keys or key in fresh_keys:
-            continue
-        fresh_keys.add(key)
-        fresh.append(item)
+        keyed_items.setdefault(monitor.key(item), item)
+    current_keys = set(keyed_items)
+
+    if is_first_run:
+        return current_keys
+
+    fresh_keys = current_keys - previous_keys
+    fresh = [item for key, item in keyed_items.items() if key in fresh_keys]
 
     if not fresh:
         return current_keys
