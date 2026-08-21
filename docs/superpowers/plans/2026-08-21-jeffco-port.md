@@ -1139,16 +1139,29 @@ def test_the_alert_body_is_the_layout_the_account_holder_was_shown() -> None:
 
 
 def test_a_missing_subject_says_not_specified_rather_than_going_blank() -> None:
-    ...
+    m = format_job_alerts([(job(1, "GOLDEN HIGH SCHOOL"), "Fri Oct 16")])[0]
+    assert "**Subject:** Not specified" in m.payload.embeds[0].description
+
+
+def test_a_teacher_line_is_omitted_entirely_when_there_is_no_name() -> None:
+    # Not an empty "**Teacher:** " line — an absent field should look absent.
+    m = format_job_alerts([(job(1, "GOLDEN HIGH SCHOOL", classf_name="SEC MATH"), "Fri Oct 16")])[0]
+    assert "Teacher" not in m.payload.embeds[0].description
 
 
 def test_a_full_day_duration_is_not_mentioned() -> None:
     # FULL is the overwhelming majority; naming it on every alert would be noise.
-    ...
+    m = format_job_alerts(
+        [(job(1, "GOLDEN HIGH SCHOOL", duration_type="FULL"), "Fri Oct 16")]
+    )[0]
+    assert "Duration" not in m.payload.embeds[0].description
 
 
 def test_a_partial_day_duration_is_mentioned() -> None:
-    ...
+    m = format_job_alerts(
+        [(job(1, "GOLDEN HIGH SCHOOL", duration_type="HALF AM"), "Fri Oct 16")]
+    )[0]
+    assert "**Duration:** HALF AM" in m.payload.embeds[0].description
 
 
 def test_the_gap_report_lists_the_newest_names_not_the_first() -> None:
