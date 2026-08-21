@@ -45,7 +45,7 @@ one small addition rather than a redesign.
 
 Measured against the current TypeScript: `timing.ts` (17 lines), `state.ts` (43),
 `health.ts` (36), and the loop half of `index.ts` all disappear into the library —
-roughly 400 of 1,500 source lines and 41 of 145 tests deleted rather than
+roughly 400 of 1,500 source lines and 41 of 173 tests deleted rather than
 translated.
 
 The library supplies: the poll loop, the key-set diff, first-run suppression,
@@ -187,10 +187,9 @@ exact spellings.
 ### Four layers, cheapest first
 
 1. **Anonymize and copy the fixtures**, `cmp`-verified in both directions.
-2. **Translate the surviving tests**, tests before implementation. Counted, not
-   estimated: 145 exist. Dropped as library-owned — `timing` (7), `state` (5),
-   `health` (5), `index` (24) — is exactly 41. Translated: `schools` (16), `dates`
-   (14), `discord` (21), `sfe` (40), `config` (13) is exactly 104, though several of
+2. **Translate the surviving tests**, tests before implementation. Counted with vitest, not grepped: **173** exist. Dropped as library-owned — `timing` (7), `state` (5),
+   `health` (5), `index` (24) — is exactly 41. Translated: `schools` (41), `dates`
+   (14), `discord` (21), `sfe` (40), `config` (16), and `schools` is 41 not 16 — exactly 132, though several of
    config's 13 cover shared names (`STATUS_WEBHOOK_URL`, `HEARTBEAT_INTERVAL_SEC`,
    `STALL_ALERT_SEC`) that `tests/lib/test_config.py` already asserts, so those
    become app-level wiring checks rather than re-tests of library primitives. Plus

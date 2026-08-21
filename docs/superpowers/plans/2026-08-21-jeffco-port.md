@@ -85,6 +85,12 @@ First because everything downstream reads these files, and because they currentl
 
 **Interfaces:** none — data only.
 
+**Before you touch that repo:** it has a **pre-existing uncommitted change** to
+`.env.example` (a comment trimmed and `POLL_INTERVAL_SEC` moved from 20 to 60) that is
+**not yours**. Leave it alone and never `git add -A` there — stage only the fixture and
+test files you edit, by name. Its suite is green at 173 passing before you start; that
+is the number to match afterwards.
+
 - [ ] **Step 1: Find every real name and id**
 
 ```bash
@@ -170,7 +176,7 @@ grep -rn "Joseph\|Johnson\|Michael\|Cengia\|25714\|22585" test/ src/
 # Replace each with its mapped fake, then:
 npm test
 ```
-Expected: 145 passing, same as before. **If the count changed, stop** — a test was deleted rather than updated.
+Expected: **173** passing, same as before. **If the count changed, stop** — a test was deleted rather than updated.
 
 - [ ] **Step 5: Copy into this repo and prove byte-equality**
 
@@ -439,7 +445,7 @@ data, so it gets an hour rather than an exemption."
 
 ### Task 3: The workspace member, types, and the High-School filter
 
-`schools.ts` is pure string work with no I/O and no dates — the cheapest module to port and a good place to establish the app's shape.
+`schools.ts` is pure string work with no I/O and no dates — the cheapest module to port and a good place to establish the app's shape. It also has the **largest test file** of the port: 41 cases, counted from vitest, not grepped.
 
 **Files:**
 - Create: `apps/jeffco/pyproject.toml`, `apps/jeffco/src/jeffco/{__init__,types,schools}.py`
@@ -461,7 +467,7 @@ uv sync && uv run python -c "import jeffco; print('member ok')"
 
 - [ ] **Step 2: Write the failing test**
 
-`tests/jeffco/test_schools.py` — translate all 16 tests from `~/personal/jeffco-sub-monitor/test/schools.test.ts`. The cases that carry the reasoning, and must survive translation:
+`tests/jeffco/test_schools.py` — translate all **41** cases from `~/personal/jeffco-sub-monitor/test/schools.test.ts`. That file is larger than it looks because it exercises the fold table exhaustively. The cases below carry the reasoning and must survive translation; the rest are systematic coverage of normalization and must be ported too, not summarized:
 
 ```python
 from jeffco.schools import (
@@ -599,8 +605,8 @@ _HS_PATTERN = re.compile(r"(^|\s)(HS|SENIOR|JR SR)(\s|$)")
 - [ ] **Step 5: Verify and commit**
 
 ```
-uv run pytest tests/jeffco -q                  # expect 16
-uv run pytest -q                                # expect 156
+uv run pytest tests/jeffco -q                  # expect 41
+uv run pytest -q                                # expect 181
 uv run mypy --strict lib apps tests tools
 uv run ruff check . && uv run ruff format --check .
 ```
@@ -794,8 +800,8 @@ Note the `WEEKDAYS` tuple here starts at Monday and indexes with `isoweekday() -
 - [ ] **Step 4: Verify and commit**
 
 ```
-uv run pytest tests/jeffco -q      # expect 31
-uv run pytest -q                    # expect 171
+uv run pytest tests/jeffco -q      # expect 55
+uv run pytest -q                    # expect 195
 uv run mypy --strict lib apps tests tools && uv run ruff check .
 ```
 
@@ -1004,7 +1010,7 @@ def zoned_wall_clock(unix_sec: int, timezone: str, time: str) -> str:
 - [ ] **Step 4: Verify and commit**
 
 ```
-uv run pytest tests/jeffco -q      # expect ~51
+uv run pytest tests/jeffco -q      # expect ~75
 uv run mypy --strict lib apps tests tools && uv run ruff check .
 ```
 
@@ -1079,7 +1085,7 @@ Structure the client as:
 - [ ] **Step 3: Verify, with a credential sweep**
 
 ```
-uv run pytest tests/jeffco -q      # expect ~71
+uv run pytest tests/jeffco -q      # expect ~95
 uv run mypy --strict lib apps tests tools && uv run ruff check .
 grep -rnE 'user_id|pin' apps/jeffco/src/jeffco/sfe.py | grep -iE 'log\(|f"|raise' || echo "no credential reaches a message"
 ```
@@ -1209,7 +1215,7 @@ def test_no_gaps_adds_nothing_and_keeps_the_default_footer() -> None:
 - [ ] **Step 3: Verify and commit**
 
 ```
-uv run pytest tests/jeffco -q      # expect ~92
+uv run pytest tests/jeffco -q      # expect ~116
 uv run mypy --strict lib apps tests tools && uv run ruff check .
 ```
 
@@ -1238,7 +1244,7 @@ The three `OpsLabels` strings must match `~/personal/jeffco-sub-monitor/src/disc
 
 - [ ] **Step 1: Write the failing tests**
 
-`test_config.py` — the app-specific half of `config.test.ts`'s 13. `SFE_USER_ID` and `SFE_PIN` required; `HS_SCHOOLS` **additive** (built-in list ∪ configured, never replacing — the realistic edit is "add the school that got missed", and replace semantics would turn that one-liner into a silent loss of 21 campuses); `POLL_INTERVAL_SEC` defaulting to **60**, not 10, and a test asserting that with the reason in a comment; `WINDOW_DAYS` 180; `timezone` fixed to `America/Denver`, not read from the environment.
+`test_config.py` — the app-specific half of `config.test.ts`'s **16**. `SFE_USER_ID` and `SFE_PIN` required; `HS_SCHOOLS` **additive** (built-in list ∪ configured, never replacing — the realistic edit is "add the school that got missed", and replace semantics would turn that one-liner into a silent loss of 21 campuses); `POLL_INTERVAL_SEC` defaulting to **60**, not 10, and a test asserting that with the reason in a comment; `WINDOW_DAYS` 180; `timezone` fixed to `America/Denver`, not read from the environment.
 
 ```python
 def test_the_pin_and_id_are_required() -> None:
@@ -1302,7 +1308,7 @@ if TYPE_CHECKING:
 - [ ] **Step 3: Verify, including a refusal check and a live-config check**
 
 ```
-uv run pytest -q                                   # expect ~215
+uv run pytest -q                                   # expect ~280
 uv run mypy --strict lib apps tests tools && uv run ruff check . && uv run ruff format --check .
 uv run python -c "
 from jeffco.config import load_config
@@ -1544,7 +1550,7 @@ Record: the observed memory against jeffco's Node figure of ~94 MiB, whether `fi
 
 **Spec coverage.** Every section of the design maps to a task: fixture anonymization → 1; the busy-stall library change → 2; `schools`/`dates`/`sfe`/`alert`/wiring → 3-8; the harness and the no-shadow-run decision → 9; the image → 10; infra → 11; the live smoke, cutover, and rollback → 12. The three deferrals (coalescing, lockout hoisting, melanzana's rebuild) appear in no task, deliberately.
 
-**Test arithmetic.** 145 exist in TypeScript; 41 are library-owned and dropped; 104 translate. Expected end state: 132 existing + ~8 library (Task 2) + ~16 schools + ~15 dates + ~20 sfe pure + ~20 sfe client + ~21 alert + ~10 config + ~8 monitor ≈ **250**. Each task states its own expected count; if one disagrees with reality, the actual number is right and the plan's estimate is wrong — report it rather than inventing a test.
+**Test arithmetic**, counted with `vitest --reporter=json` rather than grepped — an earlier draft of this plan undercounted by 28 because `grep -cE '^\s+it\('` misses nested and parameterized cases. **173** exist in TypeScript: `schools` 41, `sfe` 40, `index` 24, `discord` 21, `config` 16, `dates` 14, `timing` 7, `state` 5, `health` 5. Library-owned and dropped: `timing`+`state`+`health`+`index` = **41**. Translated: **132**. Expected end state: 132 existing Python + ~8 library (Task 2) + 41 schools + 14 dates + ~40 sfe + 21 alert + ~16 config + ~9 monitor ≈ **281**. Each task states its own expected count; if one disagrees with reality, the actual number is right and the plan's estimate is wrong — report it rather than inventing a test.
 
 **Type consistency.** `Job`/`JobDay` are defined in Task 3 and used unchanged after. `SfeHttpError.status` is set in Task 5 and read by `is_account_busy` in Task 5 and by the client in Task 6. `format_job_alerts` takes `(Job, str)` pairs in Task 7 and is called that way in Task 8. `heartbeat_extras_for(Sequence[str]) -> HeartbeatExtras` in Task 7 is called by `JeffcoMonitor.heartbeat_extras()` in Task 8. `HealthState.busy_only` is added in Task 2 and read only by `should_alert_stall`.
 
