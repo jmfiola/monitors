@@ -154,6 +154,25 @@ logName="projects/cobs-cloud/logs/cos_containers"
 jsonPayload."cos.googleapis.com/container_name"="jeffco-monitor"
 ```
 
+**The container logs do not say which version produced them.** A `cos_containers` entry
+carries only `container_id`, `container_name`, `stream` and `message` — no image, no tag.
+The image *is* in `cos_system`'s container lifecycle events, so that is where a deploy
+history lives:
+
+```
+logName="projects/cobs-cloud/logs/cos_system"
+jsonPayload.MESSAGE:"container start"
+jsonPayload.MESSAGE:"monitor:v"
+-jsonPayload.MESSAGE:"exec"
+```
+
+One line per container start, e.g. `container start <id> (image=…/jeffco-sub-monitor:v2.0.2`.
+The `-exec` term matters: an ad-hoc `docker exec` into a container also logs the image, so
+without it a single memory probe can bury the actual deploys — 295 entries against 78.
+
+Three saved queries exist in Logs Explorer (project `cobs-cloud`, location `global`):
+`melanzana-monitor-logs`, `jeffco-monitor-logs`, and `monitor-deploys` for the above.
+
 `--order=asc` is handled by the script rather than passed through, because
 `gcloud logging read` **ignores `--freshness` when asked for ascending order** — it
 returns the oldest entries in the whole retention window, so a 15-minute query
