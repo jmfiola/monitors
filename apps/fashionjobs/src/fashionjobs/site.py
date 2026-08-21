@@ -100,6 +100,8 @@ class FashionJobsSource:
         candidate_ids: set[int] = set()
         excluded_contracts: list[str] = []
         visited_urls: set[str] = set()
+        frontier = set(self._known_ids)
+        discovered_ids: set[int] = set()
         page = 1
         last_page: int | None = None
 
@@ -116,15 +118,22 @@ class FashionJobsSource:
                 raise FashionJobsParseError("FashionJobs pagination end changed during traversal")
 
             self._merge_candidate_jobs(candidate_records, parsed.jobs)
-            candidate_ids.update(job.job_id for job in parsed.jobs)
+            page_ids = {job.job_id for job in parsed.jobs}
+            candidate_ids.update(page_ids)
             excluded_contracts.extend(parsed.excluded_contracts)
 
             if page < last_page and parsed.next_url != page_url(page + 1):
                 raise FashionJobsParseError("FashionJobs next pagination URL did not match")
             if page == last_page and parsed.next_url is not None:
                 raise FashionJobsParseError("FashionJobs final page unexpectedly has a next URL")
+
+            has_unseen_ids = bool(page_ids - frontier - discovered_ids)
+            discovered_ids.update(page_ids)
+            if not self._force_full_scan and not has_unseen_ids:
+                break
             page += 1
 
+        self._force_full_scan = False
         self._known_ids.update(candidate_ids)
         self._records.update(candidate_records)
         for contract in excluded_contracts:

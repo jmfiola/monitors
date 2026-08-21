@@ -198,6 +198,102 @@ async def test_missing_state_fetches_every_declared_page() -> None:
     assert {item.job_id for item in items} == {11999999, 12000001, 12000002, 12000003}
 
 
+async def test_seeded_frontier_stops_after_an_all_known_page() -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return html_response(request, PAGE1_TWO)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(
+            client,
+            initial_keys={"12000001", "12000002", "12000003"},
+            log=lambda _message: None,
+        )
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL]
+    assert {item.job_id for item in items} == {12000001, 12000002, 12000003}
+
+
+async def test_an_unseen_page_one_id_continues_until_an_all_known_page() -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        body = PAGE1_TWO if str(request.url) == STAGE_URL else PAGE2_LAST
+        return html_response(request, body)
+
+    seed = {"12000002", "12000003", "11999999"}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=seed, log=lambda _message: None)
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2)]
+    assert {item.job_id for item in items} == {11999999, 12000001, 12000002, 12000003}
+
+
+async def test_reordered_or_removed_cards_do_not_shrink_returned_ids() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        body = PAGE1_TWO if calls == 1 else fixture("empty-stage-page.html")
+        return html_response(request, body)
+
+    seed = {"11999999", "12000001", "12000002", "12000003"}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=seed, log=lambda _message: None)
+        first = await source.fetch()
+        second = await source.fetch()
+
+    expected = {11999999, 12000001, 12000002, 12000003}
+    assert {item.job_id for item in first} == expected
+    assert {item.job_id for item in second} == expected
+
+
+async def test_empty_baseline_walks_while_pages_introduce_ids() -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        body = PAGE1_TWO if str(request.url) == STAGE_URL else PAGE2_LAST
+        return html_response(request, body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=set(), log=lambda _message: None)
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2)]
+    assert {item.job_id for item in items} == {11999999, 12000001, 12000002, 12000003}
+
+
+async def test_full_record_is_retained_when_it_disappears_from_the_site() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            body = PAGE1_TWO
+        elif calls == 2:
+            body = PAGE2_LAST
+        else:
+            body = fixture("empty-stage-page.html")
+        return html_response(request, body)
+
+    seed = {"12000002", "12000003", "11999999"}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=seed, log=lambda _message: None)
+        await source.fetch()
+        items = await source.fetch()
+
+    retained = next(item for item in items if item.job_id == 12000001)
+    assert isinstance(retained, FashionJob)
+
+
 async def test_duplicate_ids_keep_the_direct_emploi_url() -> None:
     page2_with_redirect_duplicate = PAGE2_LAST.replace(
         "https://fr.fashionjobs.com/emploi/atelier-exemple/Stage-assistant-communication,12000003.html",
