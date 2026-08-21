@@ -2,11 +2,16 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from html.parser import HTMLParser
+from urllib.parse import urlparse
 
 from fashionjobs.types import FashionJob
 
 STAGE_LABEL = "Stage"
 STAGE_URL = "https://fr.fashionjobs.com/fr/contrat/Stage,5.html"
+_FASHIONJOBS_ORIGIN = "fr.fashionjobs.com"
+_STAGE_PAGE_URL = re.compile(
+    r"^https://fr\.fashionjobs\.com/fr/contrat/Stage,5(?:,([1-9]\d*))?\.html$"
+)
 _VOID_TAGS = frozenset(
     {
         "area",
@@ -74,10 +79,14 @@ class _FashionJobsPageParser(HTMLParser):
         self._expected_url = expected_url
         self._canonical_url: str | None = None
         self._has_stage_contract = False
+        self._stage_heading: tuple[int, list[str]] | None = None
+        self._stage_heading_seen = False
         self._next_url: str | None = None
         self._end_url: str | None = None
         self._page_text: list[str] = []
         self._jobs: list[FashionJob] = []
+        self._excluded_contracts: list[str] = []
+        self._completed_cards = 0
         self._card: _JobCard | None = None
         self._card_depth: int | None = None
         self._capture: tuple[str, int, list[str]] | None = None
@@ -102,6 +111,8 @@ class _FashionJobsPageParser(HTMLParser):
             self._next_url = attributes.get("href")
         if tag == "a" and attributes.get("rel") == "end":
             self._end_url = attributes.get("href")
+        if tag == "h1":
+            self._stage_heading = (self._depth, [])
 
         if self._card is None and {"job-card", "job-card__wrapper--col"} <= classes:
             self._card = _JobCard()
@@ -137,6 +148,11 @@ class _FashionJobsPageParser(HTMLParser):
             self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
+        if self._stage_heading is not None and self._stage_heading[0] == self._depth:
+            _, parts = self._stage_heading
+            self._stage_heading_seen = STAGE_LABEL in _normalize(" ".join(parts))
+            self._stage_heading = None
+
         if self._capture is not None and self._capture[1] == self._depth:
             kind, _, parts = self._capture
             value = _normalize(" ".join(parts))
@@ -148,7 +164,12 @@ class _FashionJobsPageParser(HTMLParser):
             self._capture = None
 
         if self._card is not None and self._card_depth == self._depth:
-            self._jobs.append(self._build_job(self._card))
+            job = self._build_job(self._card, self._completed_cards + 1)
+            self._completed_cards += 1
+            if job.contract != STAGE_LABEL:
+                self._excluded_contracts.append(job.contract)
+            else:
+                self._jobs.append(job)
             self._card = None
             self._card_depth = None
         self._depth -= 1
@@ -158,32 +179,43 @@ class _FashionJobsPageParser(HTMLParser):
         if not value:
             return
         self._page_text.append(value)
+        if self._stage_heading is not None:
+            self._stage_heading[1].append(value)
         if self._capture is not None:
             self._capture[2].append(value)
 
     def result(self) -> ParsedPage:
         if self._canonical_url != self._expected_url:
-            raise FashionJobsParseError("canonical URL does not match the requested page")
+            raise FashionJobsParseError(
+                "FashionJobs canonical URL did not match the requested page"
+            )
         if not self._has_stage_contract:
-            raise FashionJobsParseError("Stage contract marker is missing")
+            raise FashionJobsParseError("FashionJobs page did not prove a checked Stage filter")
+        if not self._stage_heading_seen:
+            raise FashionJobsParseError("FashionJobs page did not expose the Stage result heading")
 
         count_match = re.search(r"\bStage\s*\(([\d\s]+)\)", " ".join(self._page_text))
         if count_match is None:
-            raise FashionJobsParseError("Stage result count is missing")
+            raise FashionJobsParseError("FashionJobs page did not expose a Stage result count")
         result_count = int(count_match.group(1).replace(" ", ""))
+        if result_count > 0 and self._completed_cards == 0:
+            raise FashionJobsParseError("FashionJobs claimed results but exposed no job cards")
         if result_count > 0 and not self._jobs:
-            raise FashionJobsParseError("Stage results reported but no job cards were parsed")
-        if self._end_url is None:
-            raise FashionJobsParseError("last page link is missing")
-        last_page_match = re.search(r",(\d+)\.html$", self._end_url)
-        if last_page_match is None:
-            raise FashionJobsParseError("last page link is invalid")
+            raise FashionJobsParseError(
+                "FashionJobs claimed results but exposed no Stage job cards"
+            )
+
+        next_url = self._pagination_url(self._next_url, "next")
+        end_url = self._pagination_url(self._end_url, "end")
+        end_match = _STAGE_PAGE_URL.fullmatch(end_url) if end_url is not None else None
+        last_page = int(end_match.group(1)) if end_match is not None and end_match.group(1) else 1
 
         return ParsedPage(
             jobs=tuple(self._jobs),
             result_count=result_count,
-            next_url=self._next_url,
-            last_page=int(last_page_match.group(1)),
+            next_url=next_url,
+            last_page=last_page,
+            excluded_contracts=tuple(self._excluded_contracts),
         )
 
     def _start_capture(self, kind: str) -> None:
@@ -191,27 +223,55 @@ class _FashionJobsPageParser(HTMLParser):
             self._capture = (kind, self._depth, [])
 
     @staticmethod
-    def _build_job(card: _JobCard) -> FashionJob:
-        if (
-            card.title is None
-            or card.url is None
-            or card.company is None
-            or len(card.muted_values) < 3
-            or card.published_at is None
-        ):
-            raise FashionJobsParseError("job card is missing a required field")
+    def _build_job(card: _JobCard, position: int) -> FashionJob:
+        if not card.title:
+            raise FashionJobsParseError(f"FashionJobs card {position} missing title")
+        if not card.url:
+            raise FashionJobsParseError(f"FashionJobs card {position} missing URL")
+        if not card.company:
+            raise FashionJobsParseError(f"FashionJobs card {position} missing company")
+        if card.published_at is None:
+            raise FashionJobsParseError(
+                f"FashionJobs card {position} missing publication timestamp"
+            )
+        if card.published_at.tzinfo is None or card.published_at.utcoffset() is None:
+            raise FashionJobsParseError(
+                f"FashionJobs card {position} has a timezone-naive publication timestamp"
+            )
+        if len(card.muted_values) < 3:
+            raise FashionJobsParseError(
+                f"FashionJobs card {position} missing required field: publication metadata"
+            )
+        contract = card.muted_values[0]
+        if not contract:
+            raise FashionJobsParseError(f"FashionJobs card {position} missing contract")
+        location = card.muted_values[1]
+        if not location:
+            raise FashionJobsParseError(f"FashionJobs card {position} missing location")
+
+        parsed_url = urlparse(card.url)
+        if parsed_url.scheme != "https" or parsed_url.netloc != _FASHIONJOBS_ORIGIN:
+            raise FashionJobsParseError(f"FashionJobs card {position} has an invalid job URL")
         id_match = re.search(r"(?:,|/redir/)(\d+)(?:,|\.html)", card.url)
         if id_match is None:
-            raise FashionJobsParseError(f"job URL has no identifier: {card.url}")
+            raise FashionJobsParseError(f"FashionJobs card {position} has no numeric job ID")
         return FashionJob(
             job_id=int(id_match.group(1)),
             title=card.title,
             company=card.company,
-            contract=card.muted_values[0],
-            location=card.muted_values[1],
+            contract=contract,
+            location=location,
             published_at=card.published_at,
             url=card.url,
         )
+
+    @staticmethod
+    def _pagination_url(url: str | None, rel: str) -> str | None:
+        if url is None:
+            return None
+        if _STAGE_PAGE_URL.fullmatch(url) is None:
+            raise FashionJobsParseError(f"FashionJobs {rel} pagination URL is invalid")
+        return url
 
 
 def _normalize(value: str) -> str:

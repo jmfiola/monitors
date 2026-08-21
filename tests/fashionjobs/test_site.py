@@ -75,3 +75,68 @@ def test_missing_third_muted_value_raises() -> None:
 
     with pytest.raises(FashionJobsParseError, match="required field"):
         parse_page(html, expected_url=STAGE_URL)
+
+
+def test_excludes_a_valid_non_stage_contract() -> None:
+    html = fixture("stage-page-1.html").replace("<span>Stage</span>", "<span>CDD</span>", 1)
+
+    page = parse_page(html, expected_url=STAGE_URL)
+
+    assert [job.job_id for job in page.jobs] == [12000002, 12000003]
+    assert page.excluded_contracts == ("CDD",)
+
+
+def test_a_complete_contract_filter_leak_fails_instead_of_looking_empty() -> None:
+    html = fixture("stage-page-1.html").replace("<span>Stage</span>", "<span>CDD</span>")
+
+    with pytest.raises(FashionJobsParseError, match="no Stage job cards"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_missing_checked_stage_marker_fails_the_page() -> None:
+    html = fixture("stage-page-1.html").replace('value="5" checked', 'value="5"', 1)
+
+    with pytest.raises(FashionJobsParseError, match="checked Stage filter"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_a_malformed_card_fails_instead_of_being_skipped() -> None:
+    html = fixture("stage-page-1.html").replace(
+        ' data-value="2026-08-21T21:50:27+02:00"', "", 1
+    )
+
+    with pytest.raises(FashionJobsParseError, match="publication timestamp"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_relative_french_text_is_not_used_as_the_timestamp() -> None:
+    html = fixture("stage-page-1.html").replace("il y a une heure", "texte local modifié", 1)
+
+    page = parse_page(html, expected_url=STAGE_URL)
+
+    assert page.jobs[0].published_at.isoformat() == "2026-08-21T21:50:27+02:00"
+
+
+def test_a_wrong_canonical_route_fails() -> None:
+    html = fixture("stage-page-1.html").replace(
+        "/fr/contrat/Stage,5.html", "/fr/emploi.html", 1
+    )
+
+    with pytest.raises(FashionJobsParseError, match="canonical"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_zero_stage_results_are_a_valid_empty_page() -> None:
+    page = parse_page(fixture("empty-stage-page.html"), expected_url=STAGE_URL)
+
+    assert page.jobs == ()
+    assert page.result_count == 0
+    assert page.next_url is None
+    assert page.last_page == 1
+
+
+def test_nonzero_stage_count_without_cards_fails() -> None:
+    html = fixture("empty-stage-page.html").replace("Stage (0)", "Stage (1)")
+
+    with pytest.raises(FashionJobsParseError, match="no job cards"):
+        parse_page(html, expected_url=STAGE_URL)
