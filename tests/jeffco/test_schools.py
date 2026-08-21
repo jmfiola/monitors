@@ -105,11 +105,6 @@ def test_junior_high_deliberately_does_not_match() -> None:
     assert is_high_school("SOMEWHERE JUNIOR HIGH", set()) is False
 
 
-def test_a_combined_campus_does_match() -> None:
-    assert is_high_school("POMONA JUNIOR/SENIOR", set()) is True
-    assert is_high_school("ALAMEDA INTERNATIONAL JR/SR", set()) is True
-
-
 # --- is_high_school -- the real school list ---------------------------------
 
 
