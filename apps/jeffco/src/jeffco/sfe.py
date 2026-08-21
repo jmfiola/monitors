@@ -1,6 +1,10 @@
-"""SFE's pure functions: token handling, the availability-window filter, and
-response shape validation. No HTTP here -- the client (login handshake, cookie
-jar, retry-on-401) is `jeffco.sfe_client` (Task 6).
+"""SFE: the pure functions (token handling, the availability-window filter,
+response shape validation) and the authenticated client that uses them.
+
+The pure half comes first and has no HTTP in it. `SfeClient` at the bottom is
+the login handshake, the token lifecycle, and the retry-on-401 -- it is the only
+part that needs a transport, and it takes an `httpx.AsyncClient` rather than
+building one so the tests can drive it through `httpx.MockTransport`.
 
 Four exception types rather than one bare `Exception`, because callers
 discriminate on them: the runner's retry policy turns on `SfeHttpError.status`,
@@ -18,8 +22,12 @@ import base64
 import json
 import math
 import re
+from collections.abc import Callable
 from datetime import datetime
+from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
+
+import httpx
 
 from jeffco.types import Job
 
@@ -66,7 +74,14 @@ class SfeHttpError(Exception):
 
 
 class SfeLoginError(Exception):
-    """The login handshake produced no token."""
+    """The login handshake did not end with a token in hand.
+
+    Covers "the landing page had no token" and every guard in the handshake that
+    refuses to continue -- a method-preserving redirect, an off-origin or
+    unparseable `Location`, a redirect chain, and the lockout suppression. They
+    are one type because the caller's response to all of them is the same: fail
+    this tick and back off.
+    """
 
 
 class SfeTokenError(Exception):
@@ -260,3 +275,348 @@ def parse_jobs(body: object) -> list[Job]:
         raise SfeShapeError(f"SFE available-jobs: all {len(body)} row(s) failed field validation")
 
     return jobs
+
+
+#: 301/302/303 become a GET by spec, which is what SFE's login flow sends.
+REDIRECT_TO_GET = frozenset({301, 302, 303})
+
+#: 307/308 preserve the method and body. Following one here would re-POST the PIN
+#: to wherever `Location` points, so it is an error rather than a silent GET.
+REDIRECT_PRESERVING_METHOD = frozenset({307, 308})
+
+
+def _assert_not_html(text: str, content_type: str | None, label: str, status: int) -> None:
+    """Refuse an HTML body. An Imperva challenge or a Tomcat error page can
+    arrive with a 200 and must never be parsed as data.
+
+    The body is never quoted, not even a short slice: SFE's error pages carry a
+    live `;jsessionid=` in the form action, so a slice of one is a working
+    session credential written into the logs. The status and the length are
+    enough to tell a challenge from an error page.
+    """
+    looks_html = "text/html" in (content_type or "") or text.lstrip().startswith("<")
+    if not looks_html:
+        return
+    raise SfeShapeError(
+        f"SFE {label} returned HTML, not JSON (HTTP {status}, {len(text)} bytes; "
+        f"body withheld — SFE error pages embed a session id)"
+    )
+
+
+def _api_message(text: str) -> str:
+    """The API's own `message` field, if the body is JSON and has one.
+
+    Deliberately not a slice of the raw body: the message is the part specific
+    enough to debug from ("Start date must be in the future."), and the rest is
+    the part that might be a credential.
+    """
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        # Not JSON. Say nothing about the body beyond its size.
+        return f" ({len(text)} bytes, body withheld)"
+    message = parsed.get("message") if isinstance(parsed, dict) else None
+    if isinstance(message, str) and message != "":
+        return f" — {message[:200]}"
+    return f" ({len(text)} bytes, body withheld)"
+
+
+class SfeClient:
+    """The authenticated SFE client: log in, hold the token, call the API.
+
+    A class rather than the TypeScript's closure-returning factory. The closure
+    existed to hold the cookie jar, the token, its expiry, and the two lockout
+    counters; `httpx.AsyncClient` supplies the jar, and a class holds the rest
+    more legibly than four `nonlocal`s would.
+
+    The `httpx.AsyncClient` is injected rather than built here so the tests can
+    hand it an `httpx.MockTransport`. Every request this class makes passes
+    `follow_redirects=False` explicitly, so it does not matter how the injected
+    client was configured -- see `_post_following_one_redirect` for why the
+    single hop is done by hand.
+    """
+
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        user_id: str,
+        pin: str,
+        timezone: str,
+        window_days: int,
+        now_unix: Callable[[], int],
+        log: Callable[[str], None],
+    ) -> None:
+        self._client = client
+        self._user_id = user_id
+        self._pin = pin
+        self._timezone = timezone
+        self._window_days = window_days
+        self._now_unix = now_unix
+        self._log = log
+        self._token: str | None = None
+        self._expires_at_unix = 0
+        self._login_failures = 0
+        self._login_blocked_until_unix = 0
+
+    # --- the login handshake -------------------------------------------------
+
+    async def _post_following_one_redirect(self, url: str, data: dict[str, str]) -> httpx.Response:
+        """Follow exactly one redirect by hand.
+
+        Not cookie plumbing -- httpx's jar handles that. Two security properties
+        live here instead. A 307/308 must be *refused* rather than followed,
+        because those preserve the method and body and would re-POST the PIN to
+        wherever `Location` points. And an off-origin `Location` must be refused,
+        because a browser would never carry SFE's cookies cross-origin and
+        because a foreign page could plant its own `var token = 'Bearer ...'` for
+        `extract_token` to pick up.
+
+        One hop, not a bounded chain. The verified flow is a single 302, and a
+        chain would mean either a changed login flow or an Imperva challenge --
+        both of which should surface as an error rather than be quietly walked.
+        (A bounded loop is also easy to get subtly wrong: it is tempting to
+        return only inside the loop, which raises on the last hop even when that
+        hop carried the token.)
+
+        Status-only messages throughout: SFE's own `Location` headers
+        legitimately carry `;jsessionid=`, so neither the header nor the host it
+        names is ever quoted.
+        """
+        first = await self._send(
+            "POST",
+            url,
+            "login",
+            data=data,
+            headers={**BROWSER_HEADERS, "content-type": "application/x-www-form-urlencoded"},
+        )
+
+        if first.status_code in REDIRECT_PRESERVING_METHOD:
+            raise SfeLoginError(
+                f"SFE login: HTTP {first.status_code} would re-send the credentials; refusing"
+            )
+        if first.status_code not in REDIRECT_TO_GET:
+            return first
+
+        location = first.headers.get("location")
+        if not location:
+            raise SfeLoginError(f"SFE login: HTTP {first.status_code} with no location header")
+
+        # Belt and braces with `_send`, which normally reports a malformed header
+        # first because httpx parses `Location` while building the `next_request`
+        # it hands back. `urlsplit` raises ValueError on a malformed
+        # authority; its own message does not quote the input today, but this
+        # Location may carry a live `;jsessionid=`, so the parser's error is dropped
+        # entirely (`from None`) rather than chained -- which keeps a foreign error
+        # object from riding along to whatever eventually logs the exception.
+        try:
+            target = urljoin(url, location)
+            target_origin = urlparse(target)
+        except ValueError:
+            raise SfeLoginError(
+                f"SFE login: HTTP {first.status_code} with an unparseable location header"
+            ) from None
+
+        # The scheme is part of the comparison, not just the host: a downgrade to
+        # http:// is a different origin and would put the session cookies on the
+        # wire in the clear.
+        expected = urlparse(SFE_BASE)
+        if (target_origin.scheme, target_origin.netloc) != (expected.scheme, expected.netloc):
+            raise SfeLoginError(
+                f"SFE login: refusing to follow a redirect off-origin (HTTP {first.status_code})"
+            )
+
+        second = await self._send("GET", target, "login", headers=BROWSER_HEADERS)
+        if second.status_code in REDIRECT_TO_GET | REDIRECT_PRESERVING_METHOD:
+            raise SfeLoginError(
+                f"SFE login: unexpected second redirect (HTTP {second.status_code})"
+            )
+        return second
+
+    async def _send(
+        self,
+        method: str,
+        url: str,
+        label: str,
+        *,
+        headers: dict[str, str],
+        data: dict[str, str] | None = None,
+        json_body: object | None = None,
+    ) -> httpx.Response:
+        """**The only place `self._client` is touched.** Every request in this
+        class goes through here, and a new call site that does not is a bug: the
+        guard below is the module's boundary against httpx's own error text.
+
+        `follow_redirects=False` stops httpx *sending* the next hop, but it still
+        parses `Location` in order to populate `response.next_request` -- and on a
+        malformed header that raises `httpx.RemoteProtocolError` whose message
+        quotes the offending value ("Invalid port: '1;jsessionid=...'"). SFE's
+        `Location` headers legitimately carry `;jsessionid=`, so that message is a
+        live session credential. Every response can carry a `Location`, not just
+        the login POST -- the init GET and any API response can too -- which is
+        why this is a single funnel rather than a guard at the redirect helper.
+
+        `from None` drops httpx's exception rather than chaining it, so nothing
+        that prints or logs this error can recover the header from `__context__`.
+
+        `SfeShapeError` rather than `SfeLoginError` for every caller: the fault is
+        "the peer did not send a readable HTTP response", which is the same fault
+        on the login GET as on an API response and is not a decision the handshake
+        made. Uniform, so the funnel cannot be misused. A failure here still
+        counts toward the login lockout, because `_login` counts every exception
+        the handshake raises. The wording covers both causes, which are
+        indistinguishable without matching on httpx's prose: a malformed
+        `Location`, and a peer that broke the protocol outright.
+        """
+        try:
+            return await self._client.request(
+                method,
+                url,
+                data=data,
+                json=json_body,
+                headers=headers,
+                follow_redirects=False,
+            )
+        except httpx.RemoteProtocolError:
+            raise SfeShapeError(
+                f"SFE {label}: the response could not be read — an unparseable location "
+                f"header or a malformed HTTP response (details withheld: SFE's location "
+                f"headers carry a session id)"
+            ) from None
+
+    async def _handshake(self) -> None:
+        """The three-request handshake.
+
+        The init response's body is deliberately not parsed: some responses embed
+        a login form whose action carries a `;jsessionid=` path parameter and some
+        do not, and login succeeds either way, because the session rides on the
+        cookies httpx has just banked. Discarding the body removes the only
+        fragile HTML dependency in the flow.
+        """
+        # Through `_send` like every other request: SFE can answer this GET with a
+        # redirect too, and its `Location` carries a session id.
+        await self._send("GET", f"{SFE_BASE}/logOnInitAction.do", "login", headers=BROWSER_HEADERS)
+
+        landing = await self._post_following_one_redirect(
+            f"{SFE_BASE}/logOnAction.do",
+            {"userID": self._user_id, "userPin": self._pin, "bootstrapDevice": ""},
+        )
+
+        # extract_token raises when the body holds no token -- see its comment.
+        fresh = extract_token(landing.text)
+        # Both fields or neither: token_expiry_unix raises on a malformed token,
+        # and assigning `self._token` before it runs would leave a token paired
+        # with a stale expiry -- which either re-logs in on every single call or,
+        # worse, trusts an expiry that has already passed.
+        fresh_expiry = token_expiry_unix(fresh)
+        self._token = fresh
+        self._expires_at_unix = fresh_expiry
+
+        remaining = self._expires_at_unix - self._now_unix()
+        self._log(f"authenticated; token valid for {remaining}s")
+        if remaining < TOKEN_REFRESH_MARGIN_SEC:
+            self._log(
+                f"warning: fresh token is already inside the {TOKEN_REFRESH_MARGIN_SEC}s refresh "
+                f"margin — every API call will re-authenticate; check this container's clock"
+            )
+
+    async def _login(self) -> None:
+        """The lockout wrapper. Three consecutive failures, then no login attempt
+        for an hour -- see MAX_LOGIN_FAILURES. The suppressed path makes no
+        network request at all, which is the whole point of it.
+        """
+        now = self._now_unix()
+        if now < self._login_blocked_until_unix:
+            raise SfeLoginError(
+                f"SFE login suppressed after {self._login_failures} consecutive login failures; "
+                f"not retrying for another {self._login_blocked_until_unix - now}s "
+                f"(protecting the account from lockout)"
+            )
+        try:
+            await self._handshake()
+        except Exception:
+            self._login_failures += 1
+            if self._login_failures >= MAX_LOGIN_FAILURES:
+                self._login_blocked_until_unix = self._now_unix() + LOGIN_BACKOFF_SEC
+                self._log(
+                    f"login failed {self._login_failures}x; pausing login attempts for "
+                    f"{LOGIN_BACKOFF_SEC}s so a bad credential cannot lock the account"
+                )
+            raise
+        # Only a completed handshake clears the counter, so the ceiling counts
+        # *consecutive* failures rather than a lifetime total.
+        self._login_failures = 0
+
+    async def _ensure_token(self) -> None:
+        if (
+            self._token is not None
+            and self._now_unix() < self._expires_at_unix - TOKEN_REFRESH_MARGIN_SEC
+        ):
+            return
+        await self._login()
+
+    # --- authenticated requests ---------------------------------------------
+
+    async def _api_request(
+        self,
+        path: str,
+        method: str,
+        json_body: object | None,
+        label: str,
+        allow_retry: bool = True,
+    ) -> object:
+        """One authenticated API request, with exactly one re-login and retry on
+        401. A second 401 raises, so a credential problem fails the tick and
+        enters backoff instead of becoming a login hammer.
+        """
+        await self._ensure_token()
+        response = await self._send(
+            method,
+            f"{SFE_BASE}{path}",
+            label,
+            json_body=json_body,
+            headers={**BROWSER_HEADERS, "authorization": f"Bearer {self._token}"},
+        )
+        text = response.text
+
+        if response.status_code == 401 and allow_retry:
+            self._log(f"{label}: 401, re-authenticating once and retrying")
+            self._token = None
+            return await self._api_request(path, method, json_body, label, allow_retry=False)
+
+        # Before the status check, so an HTML error page is reported as HTML
+        # rather than having its markup mined for a message.
+        _assert_not_html(text, response.headers.get("content-type"), label, response.status_code)
+
+        if not response.is_success:
+            raise SfeHttpError(
+                response.status_code,
+                f"SFE {label} failed: HTTP {response.status_code}{_api_message(text)}",
+            )
+
+        try:
+            parsed: object = json.loads(text)
+        except ValueError as exc:
+            raise SfeShapeError(
+                f"SFE {label} returned unparseable JSON ({len(text)} bytes)"
+            ) from exc
+        return parsed
+
+    async def fetch_available_jobs(self) -> list[Job]:
+        """The available-jobs list. The filter is rebuilt from `now_unix()` on
+        every call, which is what handles midnight rollover and keeps `jobStart`
+        out of the past.
+        """
+        body = await self._api_request(
+            "/api/job/available",
+            "POST",
+            build_available_filter(self._now_unix(), self._window_days, self._timezone),
+            "available jobs",
+        )
+        return parse_jobs(body)
+
+    async def fetch_job_detail(self, job_id: int) -> object:
+        """Detail for one job. Verified to return 200 even for a job already
+        filled, so a job claimed between the list fetch and this call still
+        renders a complete alert rather than failing.
+        """
+        return await self._api_request(f"/api/job/{job_id}", "GET", None, f"job detail {job_id}")

@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from jeffco.dates import (
@@ -122,6 +123,16 @@ def test_reads_one_entry_per_worked_day_from_the_real_multiday_fixture() -> None
     assert days[1].start_unix == MDT_OCT19_0745
 
 
+def test_parse_job_days_skips_entries_with_missing_or_unparseable_timestamps() -> None:
+    # dates.test.ts's case, and the one the sort/garbage test above does not
+    # reach: a subStart that IS a string but is not a date. The isinstance check
+    # passes it through, so only the fromisoformat guard drops it -- and without
+    # that guard the ValueError escapes into the alert path this function is the
+    # fallback for.
+    bad = {"jobDetails": [{"subStart": "not-a-date", "subEnd": "x"}, {"subStart": None}]}
+    assert parse_job_days(bad) == []
+
+
 def test_parse_job_days_returns_empty_on_a_shape_change() -> None:
     # Tolerant by design: the caller falls back to the approximate rendering.
     assert parse_job_days({}) == []
@@ -130,6 +141,9 @@ def test_parse_job_days_returns_empty_on_a_shape_change() -> None:
 
 
 def test_approximate_is_labelled_approximate() -> None:
+    # The exact string, en dash included: the day range, the time range and the
+    # raw tokens all have to survive together, and a substring check on the
+    # label alone would pass on a mangled range.
     j = Job(
         job_id=1,
         location_name="X",
@@ -137,9 +151,9 @@ def test_approximate_is_labelled_approximate() -> None:
         job_end="2026-10-19T21:30Z",
         days_of_week="F M",
     )
-    out = format_approximate(j, DENVER)
-    assert "approximate, check SFE" in out
-    assert "(days: F M)" in out
+    assert format_approximate(j, DENVER) == (
+        "Fri Oct 16 – Mon Oct 19, 7:45 AM – 3:30 PM (days: F M) — approximate, check SFE"  # noqa: RUF001
+    )
 
 
 def test_collapses_a_single_day_range_to_one_date() -> None:
@@ -170,3 +184,22 @@ def test_approximate_degrades_rather_than_raising_on_an_unparseable_date() -> No
     # This is the path that has to hold when everything else has already failed.
     j = Job(job_id=1, location_name="X", job_start="not-a-date", job_end="also-not")
     assert format_approximate(j, DENVER) == "Dates unavailable — check SFE"
+
+
+def test_approximate_keeps_the_day_tokens_when_the_dates_are_unparseable() -> None:
+    # dates.test.ts's pair, and the branch the test above does not reach: the
+    # tokens are the only schedule information left once the timestamps are
+    # unusable, so the degraded line still carries them. parse_jobs only
+    # guarantees job_start is a string, not that it is a date.
+    broken = Job(
+        job_id=1,
+        location_name="X",
+        job_start="2026-13-45T99:99Z",
+        job_end="2026-10-19T21:30Z",
+        days_of_week="F M",
+    )
+    assert format_approximate(broken, DENVER) == "Dates unavailable (days: F M) — check SFE"
+    assert (
+        format_approximate(replace(broken, days_of_week=""), DENVER)
+        == "Dates unavailable — check SFE"
+    )
