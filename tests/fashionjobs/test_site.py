@@ -234,6 +234,41 @@ async def test_an_unseen_page_one_id_continues_until_an_all_known_page() -> None
     assert {item.job_id for item in items} == {11999999, 12000001, 12000002, 12000003}
 
 
+async def test_same_read_duplicate_does_not_extend_frontier_traversal() -> None:
+    requested: list[str] = []
+    page_one = PAGE1_TWO.replace(
+        f'<a rel="end" href="{page_url(2)}">42</a>',
+        f'<a rel="end" href="{page_url(3)}">42</a>',
+    )
+    page_two_duplicate = (
+        page_one.replace(STAGE_URL, page_url(2), 1)
+        .replace(
+            f'<a rel="next" href="{page_url(2)}">Suivant</a>',
+            f'<a rel="next" href="{page_url(3)}">Suivant</a>',
+        )
+        .replace("job-card job-card__wrapper job-card__wrapper--col", "not-a-job-card", 2)
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        if str(request.url) == STAGE_URL:
+            return html_response(request, page_one)
+        if str(request.url) == page_url(2):
+            return html_response(request, page_two_duplicate)
+        pytest.fail("same-read duplicate requested page three")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(
+            client,
+            initial_keys={"12000001", "12000002"},
+            log=lambda _message: None,
+        )
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2)]
+    assert [item.job_id for item in items] == [12000001, 12000002, 12000003]
+
+
 async def test_reordered_or_removed_cards_do_not_shrink_returned_ids() -> None:
     calls = 0
 
@@ -249,9 +284,9 @@ async def test_reordered_or_removed_cards_do_not_shrink_returned_ids() -> None:
         first = await source.fetch()
         second = await source.fetch()
 
-    expected = {11999999, 12000001, 12000002, 12000003}
-    assert {item.job_id for item in first} == expected
-    assert {item.job_id for item in second} == expected
+    expected = [11999999, 12000001, 12000002, 12000003]
+    assert [item.job_id for item in first] == expected
+    assert [item.job_id for item in second] == expected
 
 
 async def test_empty_baseline_walks_while_pages_introduce_ids() -> None:
