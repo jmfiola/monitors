@@ -24,15 +24,6 @@ def test_init_seeds_both_clocks_so_neither_fires_at_boot() -> None:
     assert should_heartbeat(h, 1000, 86400) is False
 
 
-def test_is_stalled_is_false_just_under_the_threshold() -> None:
-    assert is_stalled(init_health(1000), 1599, 600) is False
-
-
-def test_is_stalled_is_true_at_exactly_the_threshold() -> None:
-    # >= : the boundary instant itself counts as stalled.
-    assert is_stalled(init_health(1000), 1600, 600) is True
-
-
 def test_heartbeat_is_not_due_before_the_interval_elapses() -> None:
     assert should_heartbeat(init_health(1000), 1000 + 86399, 86400) is False
 

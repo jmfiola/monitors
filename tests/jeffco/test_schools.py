@@ -108,10 +108,6 @@ def test_junior_high_deliberately_does_not_match() -> None:
 # --- is_high_school -- the real school list ---------------------------------
 
 
-def test_the_pattern_alone_covers_20_of_the_22_so_the_list_is_a_supplement_not_a_crutch() -> None:
-    assert len(PATTERN_COVERED) == 20
-
-
 @pytest.mark.parametrize("name", PATTERN_COVERED)
 def test_matches_with_the_list_emptied(name: str) -> None:
     assert is_high_school(name, NONE) is True

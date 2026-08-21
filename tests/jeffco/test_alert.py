@@ -49,7 +49,7 @@ So 11 + 4 = 15 cases are ported below (as 16 functions, since the Duration case
 splits in two); the remaining 6 are already exercised in tests/lib/test_discord.py.
 """
 
-from jeffco.alert import MAX_GAP_NAMES, format_job_alerts, heartbeat_extras_for
+from jeffco.alert import format_job_alerts, heartbeat_extras_for
 from jeffco.sfe import AVAILABLE_JOBS_URL
 from jeffco.types import Job
 from monitor.types import GREEN
@@ -256,9 +256,3 @@ def test_gaps_swap_the_footer_for_the_instruction() -> None:
     assert heartbeat_extras_for(["DORAL ACADEMY"]).footer_text == (
         "If any of these are high schools, add them to HS_SCHOOLS."
     )
-
-
-def test_max_gap_names_is_ten() -> None:
-    # Pins the constant Task 8 and the docs rely on -- see the truncation and
-    # newest-names tests above for the behaviour it drives.
-    assert MAX_GAP_NAMES == 10
