@@ -49,7 +49,15 @@ def _parse_key(key: str) -> tuple[str, str, str]:
     if match is None:
         return key, f"📅 {key}", key
     year, month, day, time = match.groups()
-    weekday = WEEKDAYS[date(int(year), int(month), int(day)).isoweekday() % 7]
+    try:
+        weekday = WEEKDAYS[date(int(year), int(month), int(day)).isoweekday() % 7]
+    except ValueError:
+        # The regex matches the SHAPE of a date, not a real one — "2026-02-30" gets
+        # this far. Falling back to the raw-key branch rather than propagating,
+        # because a raise here reaches run_tick as "these items were not announced",
+        # which withholds every fresh key and retries the same failure every tick
+        # forever. One malformed slot string must not be able to silence all alerting.
+        return key, f"📅 {key}", key
     return (
         f"{year}-{month}-{day}",
         f"📅 {weekday}, {MONTHS[int(month) - 1]} {int(day)}",

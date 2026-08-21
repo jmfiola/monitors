@@ -37,7 +37,9 @@ async def test_fetch_queries_every_month_in_the_window_and_returns_only_bookable
             json={
                 "long": [
                     FIXTURE_SLOT,
-                    # Dropped by the window cut, so it must not reach the runner.
+                    # Dropped by the qty_left filter (both fixture slots share an
+                    # in-window start_unix), so it must not reach the runner. The
+                    # window cut itself is covered in tests/melanzana/test_detector.py.
                     {
                         "slot": "2026-12-01 12:00",
                         "slot_start_unix": 1796146200,

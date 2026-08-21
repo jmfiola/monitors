@@ -93,3 +93,17 @@ def test_accepts_the_iso_t_separator_in_a_key() -> None:
     assert fields is not None
     assert fields[0].name == "📅 Tue, Dec 1"
     assert fields[0].value == "10:30 — 4 left"
+
+
+def test_a_shape_valid_but_impossible_date_degrades_instead_of_raising() -> None:
+    # The regex matches the shape of a date, not a real one. A raise here would reach
+    # run_tick as "not announced", withholding every fresh key and retrying the same
+    # failure every tick — one bad slot string silencing all alerting.
+    fields = (
+        format_alert([slot("2026-02-30 10:00")], booking_url=BOOKING_URL, mention_everyone=False)
+        .embeds[0]
+        .fields
+    )
+    assert fields is not None
+    assert fields[0].name == "📅 2026-02-30 10:00"
+    assert fields[0].value == "2026-02-30 10:00 — 4 left"
