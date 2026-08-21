@@ -18,15 +18,13 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# Manifests first, then sources: a code change must not re-resolve dependencies.
-# Every member's manifest is copied because the workspace root declares them all
-# and uv resolves the whole graph even when installing one package.
+# One copy, one sync. There is deliberately no manifest-first layer split here:
+# Docker keys a COPY layer on the content it copies, so any split that copies app
+# sources — as it must, to give uv every workspace member's pyproject.toml — is
+# invalidated by a source-only edit anyway. Measured: the whole dependency install
+# is under 2s of a ~10s build, which is not worth an incantation that has to stay
+# true as apps are added.
 COPY pyproject.toml uv.lock ./
-COPY lib/monitor/pyproject.toml lib/monitor/
-COPY apps/ apps/
-RUN find apps -mindepth 2 -not -name pyproject.toml -not -type d -delete || true
-RUN uv sync --frozen --no-dev --package "$APP" --no-install-workspace
-
 COPY lib/monitor lib/monitor
 COPY apps/ apps/
 RUN uv sync --frozen --no-dev --package "$APP"
