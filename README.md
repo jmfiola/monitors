@@ -75,6 +75,12 @@ the boot disk with it, and every app's `state.json`.
 ```
 
 To ship a new version, bump the tag in `infra/apps.auto.tfvars` (committed, so
-git records what is deployed) and run `./infra/deploy.sh`. Read logs with
-`./infra/logs.sh melanzana`. The full runbook is in
+git records what is deployed) and run `./infra/deploy.sh`. The full runbook is in
 [`infra/README.md`](infra/README.md).
+
+Logs are per app:
+
+```bash
+./infra/logs.sh melanzana
+./infra/logs.sh jeffco --freshness=6h
+```

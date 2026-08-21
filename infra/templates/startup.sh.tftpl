@@ -30,7 +30,12 @@ failed=""
 %{ for name, image in images ~}
 # --- ${name} ----------------------------------------------------------------
 mkdir -p /var/lib/${name}-data
-# Containers run as non-root uid 1000 (USER node); make the volume writable first.
+# Containers run as non-root uid 1000; make the volume writable first. The uid is a
+# contract between this chown and the image's own user, not a property of any base
+# image: the node image had a built-in uid-1000 user, python:3.13-slim has none, so
+# the Python images create one (`useradd --uid 1000`). An image without a uid-1000
+# user gets an unwritable /data — and the library degrades a failed state write to
+# one log line per tick rather than a crash, so it is quiet.
 chown 1000:1000 /var/lib/${name}-data
 
 # Retried: at boot this can run before the network is usable, and the first run

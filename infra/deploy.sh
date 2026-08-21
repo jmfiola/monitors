@@ -84,9 +84,14 @@ rm -f .tfplan
 # The half terraform cannot do. Idempotent, and restarts only the apps whose unit
 # or env file actually changed — deploying one app should not interrupt the others.
 echo "==> re-running startup script on $(tf_out instance_name monitors)"
-# `set -o pipefail` on the remote side too: without it this pipeline reports tail's
-# exit status, so a failed startup script looks like a successful deploy.
-on_host 'set -o pipefail; sudo google_metadata_script_runner startup 2>&1 | tail -25'
+# pipefail on the remote side too: without it this pipeline reports tail's exit
+# status, so a failed startup script looks like a successful deploy.
+#
+# `bash -o pipefail -c`, not `set -o pipefail`: the remote login shell is not
+# guaranteed to be bash, and a shell that rejects the option would abort the deploy
+# after apply and before the startup script — the half-deploy this line exists to
+# catch. Invoking bash explicitly removes the assumption.
+on_host 'bash -o pipefail -c "sudo google_metadata_script_runner startup 2>&1 | tail -25"'
 
 echo
 verify

@@ -26,9 +26,19 @@ the deploy — otherwise the startup script finds no image.
 10. `cd infra && terraform apply -target=google_artifact_registry_repository.app`
     — creates the repository so there is somewhere to push.
 11. Build and push. **`--platform linux/amd64`**: the host is x86 and an arm64
-    image fails with "exec format error".
-    `docker build --platform linux/amd64 --build-arg APP=<app> -t "$REGION-docker.pkg.dev/$PROJECT/<app>/<image>:<tag>" .`
-    then `docker push "$REGION-docker.pkg.dev/$PROJECT/<app>/<image>:<tag>"`.
+    image fails with "exec format error". Configure the registry credential helper
+    first — without it the push fails with an auth error that reads like a
+    permissions problem.
+
+    ```bash
+    REGION=us-west1
+    PROJECT=cobs-cloud
+    gcloud auth configure-docker "$REGION-docker.pkg.dev"
+
+    IMAGE="$REGION-docker.pkg.dev/$PROJECT/<app>/<image>:<tag>"
+    docker build --platform linux/amd64 --build-arg APP=<app> -t "$IMAGE" .
+    docker push "$IMAGE"
+    ```
 12. `./infra/deploy.sh` — applies, re-runs the startup script, verifies. Never a
     bare `terraform apply`.
 13. Check the first log lines: `./infra/logs.sh <app> --freshness=10m`.
