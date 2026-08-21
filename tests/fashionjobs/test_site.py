@@ -126,6 +126,16 @@ def test_a_wrong_canonical_route_fails() -> None:
         parse_page(html, expected_url=STAGE_URL)
 
 
+def test_matching_non_stage_canonical_and_expected_url_fail() -> None:
+    non_stage_url = "https://fr.fashionjobs.com/fr/emploi.html"
+    html = fixture("stage-page-1.html").replace(
+        "/fr/contrat/Stage,5.html", "/fr/emploi.html", 1
+    )
+
+    with pytest.raises(FashionJobsParseError, match="Stage route"):
+        parse_page(html, expected_url=non_stage_url)
+
+
 def test_zero_stage_results_are_a_valid_empty_page() -> None:
     page = parse_page(fixture("empty-stage-page.html"), expected_url=STAGE_URL)
 

@@ -185,6 +185,14 @@ class _FashionJobsPageParser(HTMLParser):
             self._capture[2].append(value)
 
     def result(self) -> ParsedPage:
+        if _STAGE_PAGE_URL.fullmatch(self._expected_url) is None:
+            raise FashionJobsParseError(
+                "FashionJobs requested URL did not match the Stage route"
+            )
+        if self._canonical_url is None or _STAGE_PAGE_URL.fullmatch(self._canonical_url) is None:
+            raise FashionJobsParseError(
+                "FashionJobs canonical URL did not match the Stage route"
+            )
         if self._canonical_url != self._expected_url:
             raise FashionJobsParseError(
                 "FashionJobs canonical URL did not match the requested page"
