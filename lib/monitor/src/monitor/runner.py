@@ -12,6 +12,7 @@ from typing import Literal
 
 from monitor.config import RunnerConfig, make_log
 from monitor.discord import (
+    PAYLOAD_REJECTED_STATUS,
     DiscordPostError,
     Poster,
     StatusPoster,
@@ -98,11 +99,11 @@ async def run_tick[Item](
         try:
             await poster(cfg.alert_webhook_url, message.payload)
         except DiscordPostError as err:
-            if not err.retryable:
-                # Permanent. Retrying is not caution, it is a way of never noticing:
-                # the keys would be withheld every tick forever while the heartbeat
-                # kept saying "still watching". Bank them to stop the loop, and say
-                # out loud that these items are gone.
+            if err.status_code in PAYLOAD_REJECTED_STATUS:
+                # The payload itself is rejected. Retrying is not caution, it is a way
+                # of never noticing: the keys would be withheld every tick forever
+                # while the heartbeat kept saying "still watching". Bank them to stop
+                # the loop, and say out loud that these items are gone.
                 settled.update(message.covers)
                 log(
                     f"alert permanently rejected ({err}); {len(message.covers)} "
@@ -110,6 +111,18 @@ async def run_tick[Item](
                 )
                 await post_status(
                     format_delivery_failure(cfg.labels, err.status_code or 0, len(message.covers))
+                )
+                continue
+
+            if not err.retryable:
+                # Not retryable, but the payload was fine — the webhook itself was
+                # refused (401/403/404 after a rotation or deletion). Withholding is
+                # right: nothing is lost once someone fixes the webhook, whereas banking
+                # would discard every slot while the ops message reporting it went to the
+                # same dead endpoint.
+                log(
+                    f"webhook refused ({err}); withholding {len(message.covers)} item(s) "
+                    f"— check the webhook is still valid, nothing will be announced until it is"
                 )
                 continue
 

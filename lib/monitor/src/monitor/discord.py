@@ -25,6 +25,14 @@ StatusPoster = Callable[[Payload], Awaitable[None]]
 #: rejected identically forever, so retrying it is a way of never noticing.
 RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 
+#: The payload was rejected, not the transport. Retrying an identical payload cannot
+#: help, so the runner banks these keys to stop an infinite retry — see
+#: format_delivery_failure. Deliberately narrow: a 401/403/404 means the WEBHOOK is
+#: refused (rotated, revoked, deleted), which is transient in the only sense that
+#: matters — someone can fix it — and banking every key while the ops message that
+#: would report it goes to the same dead webhook is silent, total alert loss.
+PAYLOAD_REJECTED_STATUS = frozenset({400, 413, 422})
+
 
 class HttpResponse(Protocol):
     """Just the status. Both httpx and curl_cffi responses satisfy this."""
@@ -59,9 +67,20 @@ class DiscordPostError(Exception):
 
     @property
     def retryable(self) -> bool:
-        """Unknown (a network error, no status at all) counts as retryable: the
-        cautious reading is that the message may yet be delivered."""
-        return self.status_code is None or self.status_code in RETRYABLE_STATUS
+        """Worth trying again.
+
+        Unknown (a network error, no status at all) counts as retryable: the cautious
+        reading is that the message may yet be delivered. **Any** 5xx counts too, not
+        just the ones named in RETRYABLE_STATUS — Discord sits behind Cloudflare, whose
+        520/521/522/523/524 are routine and are emphatically not "the request's own
+        fault". Enumerating 5xx was the original bug: an unlisted one took the permanent
+        branch, banking the item's key and swallowing the alert forever.
+        """
+        if self.status_code is None:
+            return True
+        if self.status_code >= 500:
+            return True
+        return self.status_code in RETRYABLE_STATUS
 
 
 async def post(url: str, payload: Payload, client: HttpClient) -> None:

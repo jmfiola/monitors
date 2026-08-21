@@ -51,6 +51,15 @@ empty. It is not part of `pytest` because it needs the sibling repo.
    baseline, rather than being reported as a poll failure. Reporting it as one
    would throttle polling, latch a false death alert, and suppress the heartbeat —
    all while alerts were arriving normally.
+3. Fresh items are de-duplicated by key. Melanzana's month enumeration pads and
+   therefore overlaps, so one slot returned by two month queries used to alert as
+   "2 open slot(s)" with its day-card line repeated. The library de-duplicates in
+   `run_tick`, fixing it for every app.
+4. A shape-valid but impossible date (`2026-02-30`) renders differently. The
+   TypeScript's `Date` rolls it over and prints a header for the wrong day; Python
+   falls back to the raw key instead of raising, so a render failure can't silence
+   all alerting. Deliberately excluded from the differential harness — the two
+   implementations differ here by design, so a unit test is the only guard.
 
 `HEARTBEAT_AT` is new: unset it behaves exactly as before, set to `HH:MM` the
 heartbeat lands at that America/Denver wall-clock time instead of drifting with

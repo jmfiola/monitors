@@ -225,6 +225,21 @@ async def test_a_permanent_rejection_banks_the_keys_and_posts_an_ops_alert() -> 
     assert any("permanently rejected" in line for line in logged)
 
 
+async def test_a_403_withholds_rather_than_banks_and_posts_no_ops_alert() -> None:
+    # A 401/403/404 means the WEBHOOK is refused (rotated, revoked, deleted), not the
+    # payload. Banking here would discard the slot forever while the ops message
+    # reporting it went to the same dead webhook — see PAYLOAD_REJECTED_STATUS.
+    poster = Recorder(fail_titles={"a"}, status=403)
+    status = StatusRecorder()
+    logged: list[str] = []
+    keys = await drive(
+        FakeMonitor([Thing("a")]), set(), poster=poster, status=status, logged=logged
+    )
+    assert keys == set()  # withheld, NOT banked
+    assert status.posts == []
+    assert any("webhook refused" in line for line in logged)
+
+
 async def test_a_429_abandons_the_rest_of_the_batch() -> None:
     # Continuing at 0.35s spacing would be 2.86 req/s into a webhook that just said
     # stop. The unattempted messages are withheld, so the next tick re-sends them.

@@ -62,6 +62,10 @@ def test_retryable_covers_rate_limits_5xx_and_unknown_but_not_a_bad_request() ->
     # banks it. Pinned here so the frozenset's contents are asserted, not inferred.
     assert DiscordPostError("x", 408).retryable is True
     assert DiscordPostError("x", 425).retryable is True
+    # Cloudflare sits in front of Discord and 520-524 are routine. Enumerating 5xx made
+    # every unlisted one permanent, which banks the item's key and swallows the alert.
+    for status in (520, 521, 522, 523, 524, 599):
+        assert DiscordPostError("x", status).retryable is True
 
 
 async def test_post_accepts_any_client_with_the_right_shape() -> None:
