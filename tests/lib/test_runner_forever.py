@@ -230,8 +230,8 @@ async def test_a_state_write_failure_is_logged_and_the_loop_continues(
 
 async def test_a_corrupt_baseline_file_says_so(tmp_path: Path) -> None:
     # Missing and corrupt both read as first run, and they mean opposite things.
-    # Corrupt means everything open right now goes unannounced — the failure that
-    # looks exactly like everything being fine.
+    # Corrupt or unreadable means everything open right now goes unannounced — the
+    # failure that looks exactly like everything being fine.
     state = tmp_path / "state.json"
     state.write_text("not json{{{", encoding="utf-8")
     harness = Harness()
@@ -247,7 +247,7 @@ async def test_a_corrupt_baseline_file_says_so(tmp_path: Path) -> None:
         max_ticks=1,
     )
 
-    assert any("did not parse" in line for line in harness.logged)
+    assert any("could not be read" in line for line in harness.logged)
     assert harness.posted == []  # a corrupt baseline still suppresses, or it floods the channel
 
 
