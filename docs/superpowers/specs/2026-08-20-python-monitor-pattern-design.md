@@ -279,10 +279,40 @@ directory already matches that convention.
   observed. Without a cap the kernel chooses the OOM victim, and there is no
   swap; with one, a leaking app dies instead of a healthy one.
 - **`StartLimitBurst`** stops a crash loop from hammering an upstream.
-- **No secret is in instance metadata.** Under konlet, melanzana's Discord
-  webhook sat in plaintext inside `gce-container-declaration`, readable by anyone
-  with compute-viewer. Every app's config now lives in `/etc/monitors/<app>.env`
-  at `0600` inside a `0700` directory.
+- **Secrets are protected on disk, but they are still in instance metadata.**
+  An earlier revision of this document claimed "no secret is in instance
+  metadata". That was **false**, and it is corrected here rather than quietly
+  dropped, because it is the kind of claim someone would rely on.
+
+  What is true: under konlet, melanzana's Discord webhook sat in plaintext inside
+  `gce-container-declaration`. Every app's config now lives in
+  `/etc/monitors/<app>.env` at `0600` inside a `0700` directory, so on the host it
+  is readable only by root.
+
+  What is also true: `main.tf` base64-encodes each env file into `local.env_b64`
+  and interpolates it into the `startup-script` metadata value. Base64 is not
+  encryption. Verified against the live instance on 2026-08-21 — the
+  `startup-script` metadata carries four blobs, two of which decode to env files
+  containing `SFE_PIN`, both `DISCORD_WEBHOOK_URL`s, and `STATUS_WEBHOOK_URL`.
+  Anyone with `compute.instances.get` on `cobs-cloud` (which `roles/compute.viewer`
+  grants) can read them:
+
+  ```bash
+  gcloud compute instances describe monitors --zone us-west1-b \
+    --format='value(metadata.items)' | grep -o "echo '[A-Za-z0-9+/=]\{40,\}'"
+  ```
+
+  So the konlet change moved the secrets from one readable metadata key to
+  another, and narrowed on-host exposure. That is a real improvement, but it is
+  not the property the old sentence claimed.
+
+  Closing it properly means the metadata stops carrying the values at all — most
+  plausibly Secret Manager, with the startup script fetching each app's config
+  using the VM service account (which would need `roles/secretmanager.secretAccessor`
+  added to the three roles it holds today) and writing the same `0600` env files.
+  That is its own change, not a footnote to this one. Until then, treat
+  `compute.viewer` on this project as equivalent to holding every monitor's
+  credentials.
 - **Image tags become committed.** Tags are not secrets. They move to a
   committed `apps.auto.tfvars`; `terraform.tfvars` keeps only credentials, so
   answering "what is running" no longer requires an SSH session.
@@ -377,9 +407,11 @@ Not covered by parity: log line wording.
 - An external dead-man's-switch. A resident app reports its own inability to
   poll, but a dead process or a dead VM is invisible, and silence is
   indistinguishable from "nothing new."
-- Giving melanzana its own ops channel. It posts heartbeats and stall alerts to
-  the same webhook as its slot alerts (`statusChannel=main`), so ops noise lands
-  where a human is being pinged; jeffco already has a separate one. Config only —
-  a `melanzana_status_webhook_url` and a deploy — and it matters more than the
-  heartbeat *hour* does, because it fixes the notification regardless of when the
-  heartbeat fires.
+- ~~Giving melanzana its own ops channel.~~ **Dropped 2026-08-21, not deferred** —
+  no longer wanted. This document previously argued it mattered more than the
+  heartbeat *hour* did; the hour shipped and the channel did not, and the channel
+  is now closed rather than left looking pending. melanzana keeps posting
+  heartbeats and stall alerts to the same webhook as its slot alerts
+  (`statusChannel=main`), so ops noise lands where a human is being pinged. The
+  wiring still exists if that ever becomes annoying: set
+  `melanzana_status_webhook_url` and deploy. jeffco already has a separate one.

@@ -78,15 +78,19 @@ Both verified before fixing, both on the mandated deploy path:
 
 ## Known gaps, deliberately not closed
 
-- **The spec's claim "No secret is in instance metadata" is false.** `infra/main.tf`
-  base64-encodes both Discord webhooks and `SFE_PIN` into the `startup-script` metadata
-  value, readable by anyone with `compute.instances.get`. The konlet fix moved secrets
-  out of `gce-container-declaration`, but the startup script reintroduced them. Predates
-  this work.
-- **melanzana still has no separate ops channel.** The spec says this "matters more than
-  the heartbeat *hour* does", and this cycle shipped the hour and left the channel unset,
-  so heartbeats and stall alerts land where a human gets pinged. Config only:
-  `melanzana_status_webhook_url` plus a deploy.
+- **Secrets are in instance metadata.** `infra/main.tf` base64-encodes each env file
+  into the `startup-script` metadata value; base64 is not encryption. Verified against
+  the live instance: two of the four blobs decode to env files containing `SFE_PIN`,
+  both `DISCORD_WEBHOOK_URL`s, and `STATUS_WEBHOOK_URL`. Anyone with
+  `compute.instances.get` can read them. Predates this work. The design doc claimed the
+  opposite; that claim is now corrected in place rather than dropped, with the Secret
+  Manager path sketched. Until it is closed, treat `compute.viewer` on `cobs-cloud` as
+  equivalent to holding every monitor's credentials.
+- **melanzana has no separate ops channel, and this is now closed rather than pending.**
+  The spec argued it mattered more than the heartbeat *hour* did; the hour shipped, the
+  channel did not, and it was dropped on 2026-08-21 as no longer wanted. Heartbeats and
+  stall alerts keep landing where a human gets pinged. The wiring survives if that ever
+  becomes annoying: set `melanzana_status_webhook_url` and deploy.
 - **`SourceBusy` still folds as a health `"failure"`**, so a long upstream-busy period
   can post "may be blocked or down" when the upstream is reachable. Cannot affect
   melanzana, which never raises it. The minimal fix when jeffco ports is a `"busy"`
