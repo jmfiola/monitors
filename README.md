@@ -7,7 +7,7 @@ free-tier GCE `e2-micro`.
 | App | Watches | Language |
 | --- | --- | --- |
 | `melanzana` | Melanzana appointment slots (Cowlendar) | Python |
-| `jeffco` | Jeffco substitute teaching jobs (SmartFindExpress) | TypeScript |
+| `jeffco` | Jeffco substitute teaching jobs (SmartFindExpress) | Python |
 | `fashionjobs` | fr.fashionjobs.com postings | planned |
 
 Every app implements four methods — `fetch`, `key`, `render`,

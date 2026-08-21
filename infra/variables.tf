@@ -91,9 +91,6 @@ variable "melanzana_mention_everyone" {
 # window that matters. Empty falls back to HEARTBEAT_INTERVAL_SEC, which anchors
 # the heartbeat to process start and therefore reports at whatever time the last
 # deploy happened.
-#
-# Only melanzana. jeffco is still TypeScript and does not read this name, so
-# setting it there would be config that silently does nothing.
 variable "melanzana_heartbeat_at" {
   type        = string
   description = "HH:MM America/Denver time for melanzana's daily heartbeat. Empty = use HEARTBEAT_INTERVAL_SEC."
@@ -147,6 +144,22 @@ variable "jeffco_poll_interval_sec" {
   description = "Seconds between jeffco available-jobs polls."
   type        = number
   default     = 60
+}
+
+# 07:00 America/Denver — same reasoning as melanzana's: early enough to read over
+# coffee and still ahead of most of the day's job postings, so a missing
+# heartbeat can be acted on before the window that matters. Empty falls back to
+# HEARTBEAT_INTERVAL_SEC, which anchors the heartbeat to process start and
+# therefore reports at whatever time the last deploy happened.
+variable "jeffco_heartbeat_at" {
+  type        = string
+  description = "HH:MM America/Denver time for jeffco's daily heartbeat. Empty = use HEARTBEAT_INTERVAL_SEC."
+  default     = "07:00"
+
+  validation {
+    condition     = var.jeffco_heartbeat_at == "" || can(regex("^([01][0-9]|2[0-3]):[0-5][0-9]$", var.jeffco_heartbeat_at))
+    error_message = "jeffco_heartbeat_at must be empty or an HH:MM 24-hour time."
+  }
 }
 
 ###############################################################################
