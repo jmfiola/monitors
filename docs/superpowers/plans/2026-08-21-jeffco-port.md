@@ -1427,10 +1427,14 @@ docker run -d --platform linux/amd64 --memory=256m \
   -v /tmp/jeffco-data:/data --name jeffco-smoke jeffco-sub-monitor:v2.0.0
 sleep 40
 docker logs jeffco-smoke
+# Measure BEFORE stopping -- `docker stats` reports nothing for a stopped
+# container, and this figure is the whole reason the memory cap stays at 256m
+# until it is measured rather than predicted.
+docker stats --no-stream --format '{{.Name}} {{.MemUsage}} {{.MemPerc}}' jeffco-smoke
 docker stop jeffco-smoke && docker rm jeffco-smoke
 ```
 
-**Use an obviously-fake user id**, not the real one. Expected: the startup lines, then login failures, then `pausing login attempts for 3600s`. Report the memory figure from `docker stats` without rounding it toward a prediction.
+**Use an obviously-fake user id**, not the real one. Expected: the startup lines, then login failures, then `pausing login attempts for 3600s`. Report the memory figure exactly as printed, without rounding it toward a prediction — the previous cycle predicted ~35 MB and measured 25.3 MiB, and a local Docker Desktop reading is inflated by the VM, so this number is indicative only. The host figure in Task 12 is the one that counts.
 
 - [ ] **Step 3: Push and commit**
 
