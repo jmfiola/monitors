@@ -114,8 +114,13 @@ for path in glob.glob('test/fixtures/*.json'):
 print('names:'); [print('  ', k, v) for k, v in sorted(names.items())]
 print('ids:');   [print('  ', k, v) for k, v in sorted(ids.items())]
 PY
-grep -rn "Johnson\|Cengia" test/*.test.ts src/ || echo "(no source/test references)"
+grep -rnF -f /tmp/real-surnames.txt test/*.test.ts src/ || echo "(no source/test references)"
 ```
+
+Put the real surnames in a scratch file outside the repo and grep with `-f`, rather
+than typing them into a command that lands in this document or in a shell history
+that gets committed. The values this step discovers are real district employees'
+names and employee ids; they are deliberately **not** recorded anywhere in this repo.
 
 Record the complete list. `weekDay` is a day name, not a person — leave it alone; it is in the query only to confirm the walk reaches nested objects.
 
@@ -127,12 +132,19 @@ Suggested, adjust if the real data has more distinct values:
 
 | Real | Fake |
 | --- | --- |
-| `Joseph` / `Johnson` | `Alex` / `Rivera` |
-| `Michael` / `Cengia` | `Sam` / `Okonkwo` |
-| `25714` | `10001` |
-| `22585` | `10002` |
+| first/last name of teacher A | `Alex` / `Rivera` |
+| first/last name of teacher B | `Sam` / `Okonkwo` |
+| employee id A (5 digits) | `10001` |
+| employee id B (5 digits) | `10002` |
 
-Write the mapping into the task report — a later maintainer wondering whether a name is real needs to find this.
+**The real column is deliberately blank, and must stay blank.** Recording the mapping
+here would make the anonymization trivially reversible and would put two real district
+employees' names and employee ids into a tracked file — which is the exact thing this
+task exists to remove. Keep the real values in a scratch file outside the repo for the
+length of this task, then delete it.
+
+What a later maintainer actually needs is the *fake* column, so they can tell that a
+name in a fixture is fictional. That is above, and it is enough.
 
 - [ ] **Step 3: Apply it to the TypeScript repo's fixtures**
 
@@ -140,8 +152,11 @@ Write the mapping into the task report — a later maintainer wondering whether 
 cd ~/personal/jeffco-sub-monitor
 python3 - <<'PY'
 import json, glob, pathlib
-MAP_STR = {"Joseph": "Alex", "Johnson": "Rivera", "Michael": "Sam", "Cengia": "Okonkwo"}
-MAP_INT = {25714: 10001, 22585: 10002}
+# Fill both maps from the scratch file written in Step 2. They are left unpopulated
+# here on purpose: the keys are real employees' names and ids, and this file is tracked.
+MAP_STR = {}  # {"<real first A>": "Alex", "<real last A>": "Rivera", ...}
+MAP_INT = {}  # {<real id A>: 10001, <real id B>: 10002}
+assert MAP_STR and MAP_INT, "populate from the scratch file before running"
 FIELDS_STR = {"employeeFirstName", "employeeLastName", "teacher"}
 FIELDS_INT = {"employeeId"}
 
@@ -172,7 +187,7 @@ Then read the diff. **Only values should have changed.** If the reformat moved u
 
 ```bash
 cd ~/personal/jeffco-sub-monitor
-grep -rn "Joseph\|Johnson\|Michael\|Cengia\|25714\|22585" test/ src/
+grep -rnF -f /tmp/real-values.txt test/ src/
 # Replace each with its mapped fake, then:
 npm test
 ```
@@ -188,7 +203,19 @@ for f in available-jobs job-detail-single job-detail-contiguous job-detail-multi
   cmp "$HOME/personal/jeffco-sub-monitor/test/fixtures/$f.json" "tests/jeffco/fixtures/$f.json" \
     && echo "$f: identical ($(wc -c < tests/jeffco/fixtures/$f.json | tr -d ' ') bytes)"
 done
-grep -rniE 'johnson|cengia|25714|22585' tests/jeffco/fixtures/ && echo "REAL DATA STILL PRESENT" || echo "no real names or ids remain"
+grep -rniF -f /tmp/real-values.txt tests/jeffco/fixtures/ \
+  && echo "REAL DATA STILL PRESENT" || echo "no real names or ids remain"
+rm -f /tmp/real-values.txt /tmp/real-surnames.txt   # the scratch files, gone
+```
+
+Then sweep the **whole tracked tree of both repos**, not just the fixtures — the values
+leak into test expectations and into prose, and a sweep scoped to `test/` and `src/`
+missed three tracked docs when this was first done:
+
+```bash
+for repo in ~/personal/monitors ~/personal/jeffco-sub-monitor; do
+  git -C "$repo" grep -inF -f /tmp/real-values.txt -- . || echo "$repo: clean"
+done
 ```
 
 **`login-page.html` IS copied** — an earlier draft of this plan said not to, on the reasoning that nothing in the Python port parses login HTML beyond a token regex. That reasoning was backwards: `extract_token` and `token_expiry_unix` are exactly that regex and that JWT, and testing them against the real page is strictly stronger than against a synthetic string. Checked before accepting it: the fixture carries no `;jsessionid=`, its bearer token expired 2026-08-14, and the JWT's `sub` claim already holds obvious placeholders (`userId: 11111`, `username: "999999"`, `clientId: "0000"`), so whoever built it already sanitised it. Add it to the `cmp` gate in Task 9 alongside the other four — both implementations read it, so byte-equality matters.
