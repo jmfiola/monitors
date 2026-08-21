@@ -308,7 +308,7 @@ async def run_forever[Item](
         # Missing and corrupt both re-baseline, and they mean opposite things.
         # Nothing can recover the lost keys, so the only useful response is to say so.
         emit(
-            f"{cfg.state_path} exists but did not parse as a key array — "
+            f"{cfg.state_path} could not be read as a key array — "
             f"re-baselining silently; anything open right now will not be announced"
         )
 
