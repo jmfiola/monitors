@@ -119,6 +119,36 @@ for jeffco would not have fitted jeffco.
 - **`mypy --strict` implies `--no-implicit-reexport`**, so `monkeypatch.setattr(mod.os, …)`
   fails. Use the string form. Do not "fix" it with `import os as os` in library code.
 - **`docker-credential-desktop` can hang**, and when it does every registry operation
-  that consults credentials blocks forever — including buildkit resolving a public base
-  image, so even a trivial Dockerfile hangs. Workaround:
-  `docker --config <dir-with-no-credsStore> build …`.
+  that consults credentials blocks forever — including buildkit resolving a *public* base
+  image, so even a two-line Dockerfile hangs with no output. It is easy to misdiagnose as
+  a network or Dockerfile problem: `docker version` answers normally and the registries
+  return 401 in 0.2s.
+
+  Confirm it, rather than guessing. A healthy helper answers instantly; note it wants a
+  bare URL on stdin, not JSON (feeding it JSON hangs a *broken* helper and produces a
+  parse error from a healthy one, which is a misleading test):
+
+  ```bash
+  echo 'https://index.docker.io/v1/' | docker-credential-desktop get
+  # healthy: "credentials not found in native keychain" (or a credential blob), instantly
+  # broken:  no output, never returns
+  ```
+
+  Recovery, cheapest first — each hung build leaves another stuck helper behind, and they
+  accumulate, so step 1 alone is often enough:
+
+  1. `pkill -f docker-credential-desktop` — clear the stuck processes.
+  2. Quit and reopen Docker Desktop. On its own this did **not** clear it here; a build
+     immediately afterwards still hung. Combined with step 1 it did.
+  3. Build with a config that declares no `credsStore` — an unblocked escape hatch that
+     needs no restart, and fine for this repo because both base images are public and the
+     only authenticated registry uses the gcloud helper:
+     ```bash
+     mkdir -p /tmp/dk && printf '{"credHelpers":{"us-west1-docker.pkg.dev":"gcloud"}}' > /tmp/dk/config.json
+     docker --config /tmp/dk build --platform linux/amd64 --build-arg APP=melanzana -t <tag> .
+     ```
+  4. Only if it persists: `docker builder prune -f`, then Docker Desktop →
+     Troubleshoot → Clean/Purge data.
+
+  Verified afterwards that the default config builds the real image again, so the
+  workaround in step 3 is for the outage, not a permanent change.
