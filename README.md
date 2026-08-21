@@ -14,6 +14,15 @@ FashionJobs sends one Discord message for each newly observed internship on the
 next successful poll. It does not filter by role, title, company, category, region,
 department, city, or keyword.
 
+Discovery on 2026-08-21 observed 1,266 active Stage listings across 42 pages and
+supported an estimate of roughly 15–25 new matching listings per day. That
+point-in-time snapshot is not a permanent volume guarantee, but it supports useful
+per-listing notifications without a digest. With 600-second polling, the seeded
+frontier normally reads about six FashionJobs result pages per hour. First or
+unknown baselines, exceptional turnover, and recovery after a failed transactional
+read can require deeper or complete pagination walks; the quiet steady state keeps
+network, CPU, and memory impact modest.
+
 Every app implements four methods — `fetch`, `key`, `render`, `heartbeat_extras` — and
 the shared `run_forever()` owns the poll loop, state diffing, backoff, health, and
 Discord delivery.

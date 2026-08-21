@@ -121,6 +121,11 @@ and on-origin URL. A malformed card, response, next link, or required page fails
 whole read; it cannot become a successful empty poll or partially advance identity
 state.
 
+Discovery on 2026-08-21 observed 1,266 active Stage listings across 42 pages and
+estimated roughly 15–25 new matching listings per day. These are point-in-time
+observations, not permanent inventory or arrival-rate guarantees. The estimated
+volume is why one timely message per listing remains reasonable instead of a digest.
+
 With no state file, the source traverses every declared page and the runner records
 the complete result as a silent first-run baseline. On restart, the state keys seed a
 numeric unseen-ID frontier. Pages are read in order until the first page containing
@@ -136,6 +141,16 @@ listing URL is retained when it is the only one present but is never crawled to 
 identity. After a successful read, newly observed full records are sorted by
 `(published_at, job_id)` and each produces one Discord message on that successful
 poll.
+
+At the 600-second interval, a seeded quiet frontier normally requests only page 1:
+about six FashionJobs result-page requests per hour, spread by 20 percent jitter.
+A missing or unusable state file has an unknown frontier and forces the first silent
+baseline through every declared page. An explicit empty baseline or exceptional
+turnover can also keep introducing unseen IDs through a complete walk. If a required
+page fails, the candidate read is discarded; recovery starts again at page 1 and
+repeats the traversal still required by the unchanged frontier. This bounds ordinary
+network and parsing work while preserving fail-closed recovery when a deeper scan is
+actually necessary.
 
 ### Health has three outcomes
 
