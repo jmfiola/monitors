@@ -117,10 +117,3 @@ def test_a_real_fault_uses_the_short_threshold_even_after_busy_ticks() -> None:
     # genuine outage is not hidden behind an hour of grace.
     h = replace(init_health(1000), busy_only=False)
     assert should_alert_stall(h, 1000 + 600, 600, 3600) is True
-
-
-def test_busy_does_not_reset_the_success_clock() -> None:
-    # The clock keeps running through a busy period. Resetting it is what would
-    # produce indefinite silence under a heartbeat still saying "still watching".
-    h = replace(init_health(1000), busy_only=True)
-    assert is_stalled(h, 1000 + 3600, 600) is True

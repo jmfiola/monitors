@@ -255,6 +255,40 @@ async def test_extras_are_not_called_when_no_heartbeat_is_due() -> None:
     assert calls == 0
 
 
+async def test_a_busy_tick_does_not_reset_the_success_clock() -> None:
+    # The stall clock keeps running through a busy period, because a busy period is
+    # still an absence of data. A busy tick that moved last_success_unix would make an
+    # upstream answering "busy" forever produce indefinite silence underneath a
+    # heartbeat still reporting "still watching" — only a real success moves it.
+    posts = Collector()
+    cfg = cfg_with()
+    start = init_health(1000)
+    health = await run_liveness(
+        cfg,
+        start,
+        outcome="busy",
+        items_tracked=0,
+        now=1500,
+        heartbeat_extras=HeartbeatExtras,
+        poster=posts,
+        log=noop_log,
+    )
+    assert health.last_success_unix == start.last_success_unix == 1000
+    assert health.consecutive_failures == 1  # it counted as an absence, not as nothing
+
+    health = await run_liveness(
+        cfg,
+        health,
+        outcome="success",
+        items_tracked=1,
+        now=1600,
+        heartbeat_extras=HeartbeatExtras,
+        poster=posts,
+        log=noop_log,
+    )
+    assert health.last_success_unix == 1600
+
+
 async def test_a_busy_outcome_latches_one_busy_alert_and_recovers() -> None:
     posts = Collector()
     cfg = cfg_with()

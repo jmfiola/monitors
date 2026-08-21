@@ -172,7 +172,14 @@ def test_a_busy_alert_names_the_cause_instead_of_claiming_the_monitor_is_down() 
     embed = payload.embeds[0]
     assert payload.content is None  # ops messages never ping
     assert "in use elsewhere" in embed.description
-    assert "blocked or down" not in embed.description
+    # The phrase to avoid lives in the per-app death FOOTER, so assert it there —
+    # asserting its absence from the description is vacuous, and the likeliest wrong
+    # implementation is a copy of the death branch with only the description edited,
+    # which would leave labels.death_footer in place and still pass.
+    assert embed.footer_text is not None
+    assert "blocked or down" not in embed.footer_text
+    assert embed.footer_text == "Liveness alert — no action needed unless it persists."
+    assert embed.footer_text != LABELS.death_footer
     assert embed.color == RED
 
 
