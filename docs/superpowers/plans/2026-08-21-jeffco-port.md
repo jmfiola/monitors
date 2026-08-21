@@ -214,7 +214,7 @@ The one library change. Read the spec's "Why the library changes once" first —
 
 **Files:**
 - Modify: `lib/monitor/src/monitor/health.py`, `config.py`, `discord.py`, `runner.py`
-- Modify: `tests/lib/test_health.py`, `test_config.py`, `test_discord.py`, `test_runner_liveness.py`
+- Modify: `tests/lib/test_health.py`, `test_config.py`, `test_discord.py`, `test_runner_liveness.py`, and **`test_runner_forever.py`** — its `test_a_status_post_failure_never_disturbs_polling` forces an ops post with `SourceBusy` plus `STALL_ALERT_SEC=1`, which stops working once busy takes 3600s. Since `busy_stall_alert_sec` is deliberately not env-readable, squeeze it with `replace(cfg_for(...), busy_stall_alert_sec=1)` and keep both the `SourceBusy` and the `[10, 10]` cadence assertion.
 
 **Interfaces:**
 - Consumes: existing library types.
@@ -287,7 +287,10 @@ async def test_a_busy_outcome_latches_one_busy_alert_and_recovers() -> None:
     posts = Collector()
     cfg = cfg_with()
     health = init_health(1000)
-    for now in (1600, 4000, 4600):       # 600 and 3000 elapsed: under the hour
+    for now in (1600, 4000):             # 600 and 3000 elapsed: under the hour.
+                                         # NOT 4600 — that is exactly 3600 elapsed, and
+                                         # is_stalled is >=, so it would alert and
+                                         # contradict the assertion below.
         health = await run_liveness(
             cfg, health, outcome="busy", items_tracked=0, now=now,
             heartbeat_extras=HeartbeatExtras, poster=posts, log=noop_log,
@@ -329,7 +332,13 @@ async def test_one_real_fault_forfeits_the_busy_grace_window() -> None:
     # 700s elapsed, past the 600s fault threshold, and busy_only is already
     # forfeited — so this alerts as a death, not as a busy signal.
     assert len(posts.posts) == 1
-    assert "blocked or down" in posts.posts[0].embeds[0].description
+    # "blocked or down" lives in the per-app death FOOTER (labels.death_footer), not the
+    # description — this module's LABELS uses "footer." — and moving it into the
+    # description would change melanzana's death payload and break parity. Assert the
+    # death shape instead.
+    assert "3 consecutive failures" in posts.posts[0].embeds[0].description
+    assert "in use elsewhere" not in posts.posts[0].embeds[0].description
+    assert posts.posts[0].embeds[0].footer_text == LABELS.death_footer
 ```
 
 - [ ] **Step 2: Run them and see them fail**
@@ -422,8 +431,8 @@ Then update `run_forever`'s `SourceBusy` branch to pass `outcome="busy"` instead
 - [ ] **Step 4: Verify**
 
 ```
-uv run pytest tests/lib -q            # expect 140 (132 + 8 new)
-uv run pytest -q                       # expect 140
+uv run pytest tests/lib -q            # expect 110 (103 lib + 7 new)
+uv run pytest -q                       # expect 139 (110 lib + 29 melanzana)
 uv run mypy --strict lib apps tests tools
 uv run ruff check . && uv run ruff format --check .
 ./tools/parity-diff.sh                 # MUST still be identical — melanzana's payloads are untouched
