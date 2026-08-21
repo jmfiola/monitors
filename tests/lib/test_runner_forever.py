@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -254,9 +254,10 @@ async def test_a_corrupt_baseline_file_says_so(tmp_path: Path) -> None:
 async def test_a_status_post_failure_never_disturbs_polling(tmp_path: Path) -> None:
     # The ops message has to be one that actually fires, which a two-tick run of a
     # healthy monitor never produces: tick 1 is first-run and posts nothing, tick 2
-    # diffs empty. SourceBusy plus STALL_ALERT_SEC=1 latches a death alert on tick 2
-    # while holding the poll cadence, so the failing post is provably reached and the
-    # `[10, 10]` assertion still means something.
+    # diffs empty. SourceBusy latches a liveness alert on tick 2 while holding the poll
+    # cadence, so the failing post is provably reached and the `[10, 10]` assertion
+    # still means something. A busy tick is governed by busy_stall_alert_sec, which is
+    # a code constant rather than an env var — so it is squeezed here directly.
     harness = Harness()
 
     async def always_fails(url: str, payload: Payload) -> None:
@@ -264,7 +265,7 @@ async def test_a_status_post_failure_never_disturbs_polling(tmp_path: Path) -> N
 
     await run_forever(
         ScriptedMonitor([SourceBusy("account busy")]),
-        cfg_for(tmp_path / "state.json", STALL_ALERT_SEC="1"),
+        replace(cfg_for(tmp_path / "state.json"), busy_stall_alert_sec=1),
         poster=always_fails,
         sleep=harness.sleep,
         now_unix=harness.now,

@@ -255,6 +255,97 @@ async def test_extras_are_not_called_when_no_heartbeat_is_due() -> None:
     assert calls == 0
 
 
+async def test_a_busy_outcome_latches_one_busy_alert_and_recovers() -> None:
+    posts = Collector()
+    cfg = cfg_with()
+    health: HealthState = init_health(1000)
+    for now in (1600, 4000):  # 600 and 3000 elapsed: under the hour
+        health = await run_liveness(
+            cfg,
+            health,
+            outcome="busy",
+            items_tracked=0,
+            now=now,
+            heartbeat_extras=HeartbeatExtras,
+            poster=posts,
+            log=noop_log,
+        )
+    assert posts.posts == []  # a short collision says nothing at all
+    health = await run_liveness(
+        cfg,
+        health,
+        outcome="busy",
+        items_tracked=0,
+        now=1000 + 3600,
+        heartbeat_extras=HeartbeatExtras,
+        poster=posts,
+        log=noop_log,
+    )
+    assert len(posts.posts) == 1
+    assert "in use elsewhere" in posts.posts[0].embeds[0].description
+    assert health.death_alerted is True  # latched, so it does not repeat
+
+    health = await run_liveness(
+        cfg,
+        health,
+        outcome="success",
+        items_tracked=3,
+        now=1000 + 3700,
+        heartbeat_extras=HeartbeatExtras,
+        poster=posts,
+        log=noop_log,
+    )
+    assert len(posts.posts) == 2  # one recovery
+    assert health.busy_only is False
+
+
+async def test_one_real_fault_forfeits_the_busy_grace_window() -> None:
+    posts = Collector()
+    cfg = cfg_with()
+    health = await run_liveness(
+        cfg,
+        init_health(1000),
+        outcome="busy",
+        items_tracked=0,
+        now=1100,
+        heartbeat_extras=HeartbeatExtras,
+        poster=posts,
+        log=noop_log,
+    )
+    assert health.busy_only is True
+    health = await run_liveness(
+        cfg,
+        health,
+        outcome="failure",
+        items_tracked=0,
+        now=1200,
+        heartbeat_extras=HeartbeatExtras,
+        poster=posts,
+        log=noop_log,
+    )
+    assert health.busy_only is False
+    health = await run_liveness(
+        cfg,
+        health,
+        outcome="busy",
+        items_tracked=0,
+        now=1700,
+        heartbeat_extras=HeartbeatExtras,
+        poster=posts,
+        log=noop_log,
+    )
+    # 700s elapsed, past the 600s fault threshold, and busy_only is already
+    # forfeited — so this alerts as a death, not as a busy signal.
+    assert len(posts.posts) == 1
+    embed = posts.posts[0].embeds[0]
+    # The death wording: it counts the failures and carries the app's death footer
+    # ("the monitor may be blocked or down" for a real app), and it does NOT excuse
+    # the absence as someone using the account.
+    assert "3 consecutive failures" in embed.description
+    assert "in use elsewhere" not in embed.description
+    assert embed.footer_text == LABELS.death_footer
+
+
 async def test_a_failing_ops_post_cannot_escape_or_strand_the_death_latch() -> None:
     # If this propagated, death_alerted would stay False and the death alert would
     # re-post on every tick forever.

@@ -135,13 +135,31 @@ def format_heartbeat(
 
 
 def format_status_alert(
-    kind: Literal["death", "recovery"],
+    kind: Literal["death", "busy", "recovery"],
     labels: OpsLabels,
     state: HealthState,
     now_unix: int,
 ) -> Payload:
-    """Liveness ops message. `death` = sustained inability to poll; `recovery` =
-    polling resumed. Never pings — only real item alerts do."""
+    """Liveness ops message. `death` = sustained inability to poll; `busy` = the same
+    absence of data, but every attempt reported the source busy elsewhere; `recovery`
+    = polling resumed. Never pings — only real item alerts do."""
+    if kind == "busy":
+        return Payload(
+            embeds=(
+                Embed(
+                    title=f"⚠️ {labels.name} — no successful poll",
+                    description=(
+                        f"No successful poll since <t:{state.last_success_unix}:R>. "
+                        f"Every attempt since then reported the source busy, which "
+                        f"usually means the account is in use elsewhere — so this is "
+                        f"probably someone working, not an outage. Still retrying; "
+                        f"you'll get one more message when it recovers."
+                    ),
+                    color=RED,
+                    footer_text="Liveness alert — no action needed unless it persists.",
+                ),
+            )
+        )
     if kind == "death":
         return Payload(
             embeds=(

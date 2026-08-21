@@ -20,7 +20,7 @@ from monitor.discord import (
     format_heartbeat,
     format_status_alert,
 )
-from monitor.health import HealthState, init_health, is_stalled, should_heartbeat
+from monitor.health import HealthState, init_health, should_alert_stall, should_heartbeat
 from monitor.state import load_state, save_state
 from monitor.timing import next_backoff, system_now, with_jitter
 from monitor.types import HeartbeatExtras, Monitor, Payload, SourceBusy
@@ -169,7 +169,7 @@ async def run_liveness(
     cfg: RunnerConfig,
     health: HealthState,
     *,
-    outcome: Literal["success", "failure"],
+    outcome: Literal["success", "busy", "failure"],
     items_tracked: int,
     now: int,
     heartbeat_extras: Callable[[], HeartbeatExtras],
@@ -177,6 +177,11 @@ async def run_liveness(
     log: Callable[[str], None],
 ) -> HealthState:
     """Fold a tick outcome into the health state and emit liveness ops messages.
+
+    `busy` is a failure that the source *answered*: the account is in use elsewhere.
+    It counts toward the stall clock exactly like `failure` — an absence of data is an
+    absence of data — but while an absence is busy-only it is judged against
+    `busy_stall_alert_sec` and reported with the cause rather than as a possible outage.
 
     Returns the next state. Every post here is best-effort and cannot escape: an ops
     message is never worth disturbing the poll loop, and an exception on the way out
@@ -202,7 +207,11 @@ async def run_liveness(
 
     if outcome == "success":
         updated = replace(
-            updated, last_success_unix=now, consecutive_failures=0, items_tracked=items_tracked
+            updated,
+            last_success_unix=now,
+            consecutive_failures=0,
+            items_tracked=items_tracked,
+            busy_only=False,
         )
         if updated.death_alerted:
             await post_status(format_status_alert("recovery", cfg.labels, updated, now))
@@ -212,9 +221,30 @@ async def run_liveness(
             # immediately after recovery, doubling up on the "I'm alive" signal.
             updated = replace(updated, death_alerted=False, last_heartbeat_unix=now)
     else:
-        updated = replace(updated, consecutive_failures=updated.consecutive_failures + 1)
-        if is_stalled(updated, now, cfg.stall_alert_sec) and not updated.death_alerted:
-            await post_status(format_status_alert("death", cfg.labels, updated, now))
+        # `busy_only` means "every failure since the last success was a busy signal".
+        # Read before the increment below, so consecutive_failures == 0 identifies the
+        # first failure of this absence — which is what *starts* the streak, since a
+        # success clears the flag. A later busy tick only continues a streak that is
+        # already busy-only, and any non-busy outcome ends it until the next success.
+        # That asymmetry is the whole mechanism: grace is granted while nothing but
+        # collisions happen, and revoked permanently by the first real fault.
+        starts_the_absence = updated.consecutive_failures == 0
+        busy_only = outcome == "busy" and (starts_the_absence or updated.busy_only)
+        updated = replace(
+            updated,
+            consecutive_failures=updated.consecutive_failures + 1,
+            busy_only=busy_only,
+        )
+        if (
+            should_alert_stall(updated, now, cfg.stall_alert_sec, cfg.busy_stall_alert_sec)
+            and not updated.death_alerted
+        ):
+            # One latch for both wordings: a busy-only absence that later turns into a
+            # real fault has already said something, and re-alerting to change the
+            # explanation would be two messages about one outage.
+            await post_status(
+                format_status_alert("busy" if busy_only else "death", cfg.labels, updated, now)
+            )
             updated = replace(updated, death_alerted=True)
 
     # Suppress the heartbeat while latched-dead: the death alert already signals
@@ -327,7 +357,7 @@ async def run_forever[Item](
             health = await run_liveness(
                 cfg,
                 health,
-                outcome="failure",
+                outcome="busy",
                 items_tracked=health.items_tracked,
                 now=tick_unix,
                 heartbeat_extras=monitor.heartbeat_extras,

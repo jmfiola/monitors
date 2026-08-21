@@ -166,6 +166,16 @@ def test_death_alert_matches_melanzanas_wording_and_never_pings() -> None:
     assert embed.footer_text == "Liveness alert — the monitor may be blocked or down."
 
 
+def test_a_busy_alert_names_the_cause_instead_of_claiming_the_monitor_is_down() -> None:
+    state = replace(init_health(1000), last_success_unix=1000, consecutive_failures=40)
+    payload = format_status_alert("busy", LABELS, state, 5000)
+    embed = payload.embeds[0]
+    assert payload.content is None  # ops messages never ping
+    assert "in use elsewhere" in embed.description
+    assert "blocked or down" not in embed.description
+    assert embed.color == RED
+
+
 def test_recovery_alert_matches_melanzanas_wording_and_never_pings() -> None:
     payload = format_status_alert("recovery", LABELS, init_health(1000), 2100)
     assert payload.content is None
