@@ -10,13 +10,13 @@
 apps = {
   melanzana = {
     image     = "melanzana-monitor"
-    image_tag = "v2.0.1"
+    image_tag = "v2.0.2"
     memory    = "128m"
   }
 
   jeffco = {
     image     = "jeffco-sub-monitor"
-    image_tag = "v2.0.1"
+    image_tag = "v2.0.2"
     memory    = "256m"
   }
 }
