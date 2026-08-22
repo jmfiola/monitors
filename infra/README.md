@@ -166,14 +166,16 @@ persisted 1,242 unique identities, and sent no first-run alerts; it is the deplo
 predecessor. `v2.1.6` keeps the fixed publication date while removing Discord's
 changing relative-time suffix and the redundant FashionJobs France footer. Its
 rollout retained the baseline, delivered one newly observed listing, and persisted
-1,243 unique identities; it is the deployed predecessor. Pending `v2.1.7` omits the
-generic alert description while preserving every job-specific field; it is the tag
-declared in `apps.auto.tfvars`.
+1,243 unique identities; it is the deployed predecessor. `v2.1.7` omits the generic
+alert description while preserving every job-specific field. Its rollout retained
+the baseline, completed a successful poll with 1,246 identities, and restarted only
+FashionJobs. Pending `v2.1.8` removes the ambiguous FashionJobs card timestamp from
+alerts; it is the tag declared in `apps.auto.tfvars`.
 
 From the repository root, the FashionJobs image step is:
 
 ```bash
-IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.7"
+IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.8"
 docker build --platform linux/amd64 --build-arg APP=fashionjobs -t "$IMAGE" .
 docker push "$IMAGE"
 ```

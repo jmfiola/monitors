@@ -143,7 +143,6 @@ def test_blank_location_slot_is_retained_and_formats_without_empty_alert_fields(
     assert [(field.name, field.value) for field in fields] == [
         ("Company", "MAISON EXEMPLE"),
         ("Contract", "Stage"),
-        ("Published", "<t:1787297400:F>"),
     ]
     assert all(field.name and field.value for field in fields)
 

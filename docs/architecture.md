@@ -243,10 +243,11 @@ it went to the same dead endpoint, which is why those two rows differ.
 
 For FashionJobs, each message covers exactly its numeric listing ID. The embed title
 is the listing title, the URL is its FashionJobs link, and the fields appear as
-`Company`, optional non-empty `Location`, `Contract`, then `Published` with absolute
-Discord time only; it does not include Discord's changing relative-time style. Its
-description and the redundant FashionJobs France footer are omitted. Source Markdown
-is escaped, field limits are respected, and
+`Company`, optional non-empty `Location`, then `Contract`. The source card timestamp
+still provides deterministic first-seen ordering, but is not rendered because it does
+not reliably represent the employer's original posting date. The embed description
+and redundant FashionJobs France footer are also omitted. Source Markdown is escaped,
+field limits are respected, and
 `allowed_mentions.parse` is empty, so source text such as `@everyone` cannot ping.
 If delivery fails retryably, that ID remains outside the saved baseline and is retried
 on the next successful delivery; delivered IDs and other safely banked IDs still
@@ -350,8 +351,10 @@ completed a 42-page baseline, persisted 1,242 unique identities, and sent no
 first-run alerts. `v2.1.6` keeps the fixed publication date while removing Discord's
 changing relative-time suffix and the redundant FashionJobs France footer. Its
 rollout retained the baseline, delivered one newly observed listing, and persisted
-1,243 unique identities. Infrastructure declares pending `v2.1.7`, which omits the
-generic alert description while preserving every job-specific field.
+1,243 unique identities. `v2.1.7` omits the generic alert description while
+preserving every job-specific field. Its rollout retained the baseline, completed a
+successful poll with 1,246 identities, and restarted only FashionJobs. Infrastructure
+declares pending `v2.1.8`, which removes the ambiguous card timestamp from alerts.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).
