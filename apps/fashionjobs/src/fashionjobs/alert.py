@@ -34,7 +34,7 @@ def format_job_alert(job: FashionJob) -> Message:
             Field(name="Contract", value=discord_text(job.contract, 1024)),
             Field(
                 name="Published",
-                value=f"<t:{unix}:F> · <t:{unix}:R>",
+                value=f"<t:{unix}:F>",
                 inline=False,
             ),
         ]

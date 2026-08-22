@@ -32,7 +32,7 @@ def test_alert_contains_every_reliable_job_field() -> None:
         ("Company", "MAISON EXEMPLE"),
         ("Location", "Paris"),
         ("Contract", "Stage"),
-        ("Published", "<t:1787341827:F> · <t:1787341827:R>"),
+        ("Published", "<t:1787341827:F>"),
     ]
     assert message.covers == ("12000001",)
     assert message.payload.allowed_mentions_parse == ()
@@ -45,9 +45,19 @@ def test_alert_omits_blank_location_without_empty_fields() -> None:
     assert [(field.name, field.value) for field in embed.fields or ()] == [
         ("Company", "MAISON EXEMPLE"),
         ("Contract", "Stage"),
-        ("Published", "<t:1787341827:F> · <t:1787341827:R>"),
+        ("Published", "<t:1787341827:F>"),
     ]
     assert all(field.name and field.value for field in embed.fields or ())
+
+
+def test_alert_publication_time_is_fixed_not_relative() -> None:
+    message = format_job_alert(_job())
+    published = next(
+        field for field in message.payload.embeds[0].fields or () if field.name == "Published"
+    )
+
+    assert published.value == "<t:1787341827:F>"
+    assert ":R>" not in published.value
 
 
 def test_source_markdown_is_escaped_and_everyone_is_disabled() -> None:
