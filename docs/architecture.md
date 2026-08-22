@@ -329,8 +329,9 @@ Melanzana and Jeffco remain on `v2.0.2`. The first FashionJobs `v2.1.0` rollout
 proved GCE egress and Discord delivery but exposed that the localized timestamp
 display text can be empty even though the absolute `data-value` is present. A
 one-page `v2.1.1` smoke then exposed titled recruitment links surrounding the real
-job link. Both published images remain immutable; infrastructure declares `v2.1.2`
-with both focused parser fixes.
+job link. `v2.1.2` passed its focused smoke, but its first baseline exposed the
+promoted/final-page pagination shape. All published images remain immutable;
+infrastructure declares pending `v2.1.3`, which contains the focused pagination fix.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).
