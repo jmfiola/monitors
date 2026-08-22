@@ -67,6 +67,20 @@ def three_page_bodies() -> dict[str, str]:
     return {STAGE_URL: page_one, page_url(2): page_two, page_url(3): page_three}
 
 
+def page_with_promoted_end(page: int) -> str:
+    return (
+        fixture("stage-page-2.html")
+        .replace(
+            f'<link rel="canonical" href="{page_url(2)}">',
+            f'<link rel="canonical" href="{page_url(page)}">',
+        )
+        .replace(
+            f'<a rel="next" href="{page_url(3)}">',
+            f'<a rel="next" href="{page_url(page + 1)}">',
+        )
+    )
+
+
 def test_stage_route_is_fixed_and_has_no_keyword_or_location_query() -> None:
     assert STAGE_URL == "https://fr.fashionjobs.com/fr/contrat/Stage,5.html"
     assert page_url(1) == STAGE_URL
@@ -233,6 +247,33 @@ def test_positive_count_with_insufficient_cards_requires_end_pagination() -> Non
 
     with pytest.raises(FashionJobsParseError, match="end pagination"):
         parse_page(without_pagination, expected_url=STAGE_URL)
+
+
+def test_pagination_free_positive_page_requires_exact_learned_final_page() -> None:
+    final_page = fixture("stage-page-42-final.html")
+
+    with pytest.raises(FashionJobsParseError, match="end pagination"):
+        parse_page(final_page, expected_url=page_url(42))
+    parsed = parse_page(
+        final_page,
+        expected_url=page_url(42),
+        expected_final_page=42,
+    )
+
+    assert parsed.last_page == 42
+    assert parsed.next_url is None
+    assert [job.job_id for job in parsed.jobs] == [11999998]
+
+
+def test_pagination_free_intermediate_page_fails_with_later_final_page_context() -> None:
+    intermediate_page = fixture("stage-page-42-final.html").replace(page_url(42), page_url(41))
+
+    with pytest.raises(FashionJobsParseError, match="end pagination"):
+        parse_page(
+            intermediate_page,
+            expected_url=page_url(41),
+            expected_final_page=42,
+        )
 
 
 def test_page_one_with_more_results_requires_a_later_end_page() -> None:
@@ -861,6 +902,77 @@ async def test_page_two_failure_discards_the_whole_candidate_read() -> None:
     assert caught.value.status_code == 503
     assert requested == [STAGE_URL, page_url(2), STAGE_URL]
     assert items == []
+
+
+async def test_promoted_end_fetches_the_expanded_pagination_final_page() -> None:
+    requested: list[str] = []
+    bodies = {
+        STAGE_URL: with_end_page(fixture("stage-page-1.html"), 41),
+        **{page_url(page): page_with_promoted_end(page) for page in range(2, 42)},
+        page_url(42): fixture("stage-page-42-final.html"),
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return html_response(request, bodies[str(request.url)])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        items = await source.fetch()
+
+    assert requested == [page_url(page) for page in range(1, 43)]
+    assert [item.job_id for item in items] == [11999998, 11999999, 12000001, 12000002, 12000003]
+
+
+async def test_backward_pagination_end_failure_discards_candidate_state() -> None:
+    requested: list[str] = []
+    fail_with_backward_end = True
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal fail_with_backward_end
+        requested.append(str(request.url))
+        if str(request.url) == STAGE_URL:
+            body = PAGE1_TWO if fail_with_backward_end else fixture("empty-stage-page.html")
+        else:
+            body = PAGE2_LAST.replace(
+                f'<a rel="end" href="{page_url(2)}">',
+                f'<a rel="end" href="{STAGE_URL}">',
+            )
+            fail_with_backward_end = False
+        return html_response(request, body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        with pytest.raises(FashionJobsParseError, match="end changed"):
+            await source.fetch()
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2), STAGE_URL]
+    assert items == []
+
+
+async def test_learned_final_page_with_next_url_fails_before_an_extra_request() -> None:
+    requested: list[str] = []
+    final_page_with_next = (
+        fixture("stage-page-42-final.html")
+        .replace(
+            page_url(42),
+            page_url(2),
+        )
+        .replace("</body>", f'<a rel="next" href="{page_url(3)}">Suivant</a></body>')
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        body = PAGE1_TWO if str(request.url) == STAGE_URL else final_page_with_next
+        return html_response(request, body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        with pytest.raises(FashionJobsParseError, match="final page unexpectedly has a next URL"):
+            await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2)]
 
 
 @pytest.mark.parametrize(

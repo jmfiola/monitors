@@ -142,6 +142,14 @@ recognized non-Stage cards are deliberately excluded and logged, while an unknow
 label or metadata shape fails closed. Declared pagination is capped by
 `MAX_PAGES=100` before traversal begins.
 
+FashionJobs can expose extra promoted cards on page 1: the first declared end may
+therefore be lower than a later end reached through the validated sequential next
+links. The source promotes that bound and completes the expanded walk, but a lower
+later end still aborts the read. A positive final page may omit pagination only when
+the source has already passed that exact final page number to the parser; a
+pagination-free intermediate page, a final-page next link, and any malformed or
+unexpected next link remain failures.
+
 Discovery on 2026-08-21 observed 1,266 active Stage listings across 42 pages and
 estimated roughly 15–25 new matching listings per day. These are point-in-time
 observations, not permanent inventory or arrival-rate guarantees. The estimated

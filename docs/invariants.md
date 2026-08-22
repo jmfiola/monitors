@@ -278,6 +278,13 @@ flag, or completion timestamp commits until the entire required traversal succee
 `MAX_PAGES=100` accepts page 100 and rejects a declared page 101 before the crawler
 can fan out unexpectedly.
 
+When a validated next-link chain reaches a later declared end, the transaction
+promotes its bound and traverses through that page; a later lower end still fails.
+A positive pagination-free page is accepted only when the source has explicitly
+supplied that exact requested page as the final page learned earlier in the same
+walk. Pagination-free intermediate pages, final-page next links, malformed next
+URLs, cycles, and partial failures remain fail-closed transaction aborts.
+
 Numeric FJOB IDs never shrink when cards reorder or disappear. Full records remain
 available in memory when possible; otherwise `KnownJob` placeholders preserve the
 identity. Ordinary and promoted cards with one ID reconcile only when their core

@@ -77,8 +77,13 @@ def page_url(page: int) -> str:
     return f"https://fr.fashionjobs.com/fr/contrat/Stage,5,{page}.html"
 
 
-def parse_page(html: str, *, expected_url: str) -> ParsedPage:
-    parser = _FashionJobsPageParser(expected_url)
+def parse_page(
+    html: str,
+    *,
+    expected_url: str,
+    expected_final_page: int | None = None,
+) -> ParsedPage:
+    parser = _FashionJobsPageParser(expected_url, expected_final_page=expected_final_page)
     parser.feed(html)
     parser.close()
     return parser.result()
@@ -127,12 +132,16 @@ class FashionJobsSource:
             if requested_url in visited_urls:
                 raise FashionJobsParseError("FashionJobs pagination cycle detected")
             visited_urls.add(requested_url)
-            parsed = await self._request_page(page)
+            parsed = await self._request_page(page, expected_final_page=last_page)
 
             if last_page is None:
                 last_page = parsed.last_page
-            elif parsed.last_page != last_page:
+            elif parsed.last_page < last_page:
                 raise FashionJobsParseError("FashionJobs pagination end changed during traversal")
+            elif parsed.last_page > last_page:
+                if parsed.next_url != page_url(page + 1):
+                    raise FashionJobsParseError("FashionJobs next pagination URL did not match")
+                last_page = parsed.last_page
 
             self._merge_candidate_jobs(candidate_records, parsed.jobs)
             page_ids = {job.job_id for job in parsed.jobs}
@@ -160,7 +169,7 @@ class FashionJobsSource:
             self._last_full_scan_at = self._clock()
         return items
 
-    async def _request_page(self, page: int) -> ParsedPage:
+    async def _request_page(self, page: int, *, expected_final_page: int | None) -> ParsedPage:
         requested_url = page_url(page)
         response = await self._client.get(requested_url, follow_redirects=False)
         if not 200 <= response.status_code < 300:
@@ -171,7 +180,11 @@ class FashionJobsSource:
         content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         if content_type not in {"text/html", "application/xhtml+xml"}:
             raise FashionJobsError("FashionJobs response did not have an HTML content type")
-        return parse_page(response.text, expected_url=requested_url)
+        return parse_page(
+            response.text,
+            expected_url=requested_url,
+            expected_final_page=expected_final_page,
+        )
 
     @staticmethod
     def _merge_candidate_jobs(
@@ -256,9 +269,10 @@ class _Capture:
 
 
 class _FashionJobsPageParser(HTMLParser):
-    def __init__(self, expected_url: str) -> None:
+    def __init__(self, expected_url: str, *, expected_final_page: int | None) -> None:
         super().__init__(convert_charrefs=True)
         self._expected_url = expected_url
+        self._expected_final_page = expected_final_page
         self._canonical_url: str | None = None
         self._has_stage_contract = False
         self._stage_heading: tuple[int, list[str]] | None = None
@@ -436,10 +450,12 @@ class _FashionJobsPageParser(HTMLParser):
         next_url = self._pagination_url(self._next_url, "next")
         end_url = self._pagination_url(self._end_url, "end")
         end_match = _STAGE_PAGE_URL.fullmatch(end_url) if end_url is not None else None
+        current_page = int(page_match.group(1)) if page_match.group(1) else 1
         last_page = int(end_match.group(1)) if end_match is not None and end_match.group(1) else 1
+        if end_url is None and self._expected_final_page == current_page:
+            last_page = current_page
         if last_page > MAX_PAGES:
             raise FashionJobsParseError("FashionJobs declared end exceeded the page safety limit")
-        current_page = int(page_match.group(1)) if page_match.group(1) else 1
         unique_job_count = len({job.job_id for job in self._jobs})
 
         if result_count == 0 and self._completed_cards > 0:
@@ -456,7 +472,11 @@ class _FashionJobsPageParser(HTMLParser):
             raise FashionJobsParseError(
                 "FashionJobs claimed results but exposed no Stage job cards"
             )
-        if result_count > unique_job_count and end_url is None:
+        if (
+            result_count > unique_job_count
+            and end_url is None
+            and self._expected_final_page != current_page
+        ):
             raise FashionJobsParseError("FashionJobs result count requires an end pagination URL")
         if current_page == 1 and result_count > unique_job_count and last_page == 1:
             raise FashionJobsParseError(
