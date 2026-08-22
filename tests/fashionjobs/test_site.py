@@ -293,6 +293,22 @@ def test_pagination_free_positive_page_requires_exact_learned_final_page() -> No
     assert [job.job_id for job in parsed.jobs] == [11999998]
 
 
+def test_pagination_free_non_page_one_requires_a_learned_final_page() -> None:
+    self_consistent_page = fixture("stage-page-42-final.html").replace("Stage (1242)", "Stage (1)")
+
+    with pytest.raises(FashionJobsParseError, match="end pagination"):
+        parse_page(self_consistent_page, expected_url=page_url(42))
+
+    parsed = parse_page(
+        self_consistent_page,
+        expected_url=page_url(42),
+        expected_final_page=42,
+    )
+
+    assert parsed.last_page == 42
+    assert [job.job_id for job in parsed.jobs] == [11999998]
+
+
 def test_pagination_free_intermediate_page_fails_with_later_final_page_context() -> None:
     intermediate_page = fixture("stage-page-42-final.html").replace(page_url(42), page_url(41))
 
@@ -1016,7 +1032,7 @@ async def test_backward_pagination_end_failure_discards_candidate_state() -> Non
     assert items == []
 
 
-async def test_learned_final_page_with_next_url_fails_before_an_extra_request() -> None:
+async def test_learned_final_page_with_multitoken_next_url_fails_before_an_extra_request() -> None:
     requested: list[str] = []
     final_page_with_next = (
         fixture("stage-page-42-final.html")
@@ -1024,7 +1040,7 @@ async def test_learned_final_page_with_next_url_fails_before_an_extra_request() 
             page_url(42),
             page_url(2),
         )
-        .replace("</body>", f'<a rel="next" href="{page_url(3)}">Suivant</a></body>')
+        .replace("</body>", f'<a rel="NeXt nofollow" href="{page_url(3)}">Suivant</a></body>')
     )
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -1093,13 +1109,24 @@ async def test_duplicate_end_pagination_declarations_discard_transaction() -> No
     )
 
 
+def with_duplicated_anchor(html: str, *, original: str, duplicate: str) -> str:
+    assert html.count(original) == 1
+    duplicated_html = html.replace(original, duplicate * 2)
+    assert duplicated_html.count(duplicate) == 2
+    return duplicated_html
+
+
 def test_identical_repeated_pagination_declarations_are_accepted() -> None:
     repeated_next = f'<a rel="next" href="{page_url(2)}">Suivant</a>'
     repeated_end = f'<a rel="end" href="{page_url(42)}">42</a>'
-    html = (
-        fixture("stage-page-1.html")
-        .replace(repeated_next, repeated_next * 2)
-        .replace(repeated_end, repeated_end * 2)
+    html = with_duplicated_anchor(
+        with_duplicated_anchor(
+            fixture("stage-page-1.html"),
+            original=repeated_next,
+            duplicate=repeated_next,
+        ),
+        original=repeated_end,
+        duplicate=repeated_end,
     )
 
     page = parse_page(html, expected_url=STAGE_URL)
@@ -1111,10 +1138,14 @@ def test_identical_repeated_pagination_declarations_are_accepted() -> None:
 async def test_identical_repeated_pagination_declarations_traverse_source() -> None:
     repeated_next = f'<a rel="next" href="{page_url(2)}">Suivant</a>'
     repeated_end = f'<a rel="end" href="{page_url(2)}">2</a>'
-    page_one = (
-        fixture("stage-page-1.html")
-        .replace(repeated_next, repeated_next * 2)
-        .replace(f'<a rel="end" href="{page_url(42)}">42</a>', repeated_end * 2)
+    page_one = with_duplicated_anchor(
+        with_duplicated_anchor(
+            fixture("stage-page-1.html"),
+            original=repeated_next,
+            duplicate=repeated_next,
+        ),
+        original=f'<a rel="end" href="{page_url(42)}">42</a>',
+        duplicate=repeated_end,
     )
     final_page = fixture("stage-page-42-final.html").replace(page_url(42), page_url(2))
     requested: list[str] = []

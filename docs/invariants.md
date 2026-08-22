@@ -280,13 +280,15 @@ can fan out unexpectedly.
 
 When a validated next-link chain reaches a later declared end, the transaction
 promotes its bound and traverses through that page; a later lower end still fails.
-A positive pagination-free page is accepted only when the source has explicitly
+A pagination-free positive page is accepted only when page 1 self-proves that its
+declared result count equals its visible unique IDs, or when the source explicitly
 supplied that exact requested page as the final page learned earlier in the same
-walk. Pagination-free intermediate pages, final-page next links, malformed next
-URLs, cycles, and partial failures remain fail-closed transaction aborts.
-Repeated responsive `rel=next` or `rel=end` anchors are valid only when every
-declaration has the same valid Stage URL; missing or conflicting declarations fail
-closed before state or full-scan completion commits.
+walk. A zero-result page 1 remains valid. Other pagination-free positive pages,
+final-page next links, malformed next URLs, cycles, and partial failures remain
+fail-closed transaction aborts. Responsive anchor `rel` values are case-insensitive
+token sets; repeated `next` or `end` declarations are valid only when every
+declaration has the same valid Stage URL, while missing or conflicting declarations
+fail closed before state or full-scan completion commits.
 
 Numeric FJOB IDs never shrink when cards reorder or disappear. Full records remain
 available in memory when possible; otherwise `KnownJob` placeholders preserve the

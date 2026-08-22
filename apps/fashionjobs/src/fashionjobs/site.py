@@ -316,10 +316,12 @@ class _FashionJobsPageParser(HTMLParser):
             and "checked" in attributes
         ):
             self._has_stage_contract = True
-        if tag == "a" and attributes.get("rel") == "next":
-            self._next_urls.append(attributes.get("href"))
-        if tag == "a" and attributes.get("rel") == "end":
-            self._end_urls.append(attributes.get("href"))
+        if tag == "a":
+            rel_tokens = (attributes.get("rel") or "").casefold().split()
+            if "next" in rel_tokens:
+                self._next_urls.append(attributes.get("href"))
+            if "end" in rel_tokens:
+                self._end_urls.append(attributes.get("href"))
         if tag == "h1":
             self._stage_heading = (self._depth, [])
 
@@ -483,9 +485,10 @@ class _FashionJobsPageParser(HTMLParser):
                 "FashionJobs claimed results but exposed no Stage job cards"
             )
         if (
-            result_count > unique_job_count
+            result_count > 0
             and end_url is None
             and self._expected_final_page != current_page
+            and (current_page != 1 or result_count != unique_job_count)
         ):
             raise FashionJobsParseError("FashionJobs result count requires an end pagination URL")
         if current_page == 1 and result_count > unique_job_count and last_page == 1:

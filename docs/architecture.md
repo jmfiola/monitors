@@ -145,9 +145,11 @@ promotion, is capped by `MAX_PAGES=100` before it extends traversal.
 FashionJobs can expose extra promoted cards on page 1: the first declared end may
 therefore be lower than a later end reached through the validated sequential next
 links. The source promotes that bound and completes the expanded walk, but a lower
-later end still aborts the read. A positive final page may omit pagination only when
-the source has already passed that exact final page number to the parser; a
-pagination-free intermediate page, a final-page next link, and any malformed or
+later end still aborts the read. A pagination-free positive page is valid only when
+page 1 self-proves that its declared result count equals its visible unique IDs
+(duplicate appearances do not add IDs), or when the source has already passed that
+exact final page number to the parser. A zero-result page 1 remains valid. Any other
+pagination-free positive page, a final-page next link, and any malformed or
 unexpected next link remain failures.
 
 Discovery on 2026-08-21 observed 1,266 active Stage listings across 42 pages and
@@ -175,10 +177,10 @@ due once at least 86,400 monotonic seconds have elapsed and runs on the next pol
 Failed startup or due scans commit neither candidate identity state nor the
 completion marker, so they remain due.
 
-FashionJobs may render responsive pagination controls twice. Repeated `rel=next`
-or `rel=end` anchors are accepted only when every declaration has the same valid
-Stage URL; missing or conflicting declarations fail closed before the transaction
-can commit.
+FashionJobs may render responsive pagination controls twice. Anchor `rel` values
+are case-insensitive token sets, so repeated `next` or `end` declarations are
+accepted only when every declaration has the same valid Stage URL; missing or
+conflicting declarations fail closed before the transaction can commit.
 
 Ordinary intervening ticks read pages in order and stop at the first page containing
 no ID unseen before that read. The retained ID set only grows, and a listing that
