@@ -344,9 +344,10 @@ promoted/final-page pagination shape. All published images remain immutable;
 `v2.1.3` remains undeployed after its structural smoke exposed identical responsive
 pagination anchors. `v2.1.4` contained the focused pagination fix, but its first
 baseline failed closed, before state or alerts, on a structurally present but blank
-location. Infrastructure declares pending `v2.1.5`, which preserves the required
-location slot while allowing blank text and omitting the unavailable field from
-Discord alerts.
+location. `v2.1.5` preserves the required location slot while allowing blank text
+and omitting the unavailable field from Discord alerts. Its production rollout
+completed a 42-page baseline, persisted 1,242 unique identities, and sent no
+first-run alerts.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).

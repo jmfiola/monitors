@@ -160,8 +160,10 @@ first baseline exposed the promoted/final-page pagination shape. All published i
 remain immutable; `v2.1.3` remains undeployed after its structural smoke exposed
 identical responsive pagination anchors. `v2.1.4` contained the focused pagination
 fix, but its first baseline failed closed, before state or alerts, on a structurally
-present but blank location. Pending `v2.1.5` permits that blank location text while
-retaining the required metadata slot and is the declared tag in `apps.auto.tfvars`.
+present but blank location. `v2.1.5` permits that blank location text while retaining
+the required metadata slot. Its production rollout completed a 42-page baseline,
+persisted 1,242 unique identities, and sent no first-run alerts; it is the deployed
+tag declared in `apps.auto.tfvars`.
 
 From the repository root, the FashionJobs image step is:
 
