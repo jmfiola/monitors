@@ -12,12 +12,10 @@ requires-python = ">=3.13"
 # whose only liveness signal is the process that just died. zoneinfo falls back
 # to this package automatically, so ~450 KB removes the base-image bet entirely.
 #
-# No httpx: the whole reason this project is Python is that fashionjobs needs
-# curl_cffi with impersonate="chrome" to clear Cloudflare's TLS fingerprinting.
-# A library that names httpx in a type annotation forces that app to reimplement
+# No httpx: Discord transport is a structural Protocol, so the shared library owns
+# no concrete HTTP-client dependency. Each app brings its own client while reusing
 # post() — including the "never put the webhook URL in the error" rule, which is
-# the last invariant that should be copy-pasted. The transport is a Protocol; the
-# app brings its own client.
+# the last invariant that should be copy-pasted.
 dependencies = ["tzdata>=2025.1"]
 
 [build-system]

@@ -56,7 +56,7 @@ reintroduce that bug for the next non-standard gateway code.
 `state.py`
 
 `load_state` returns `keys=None, corrupt=False` only for a missing file and
-`keys=None, corrupt=True` when one exists but cannot be read as a key array. Both
+`keys=None, corrupt=True` when one exists but cannot be read as a string-key array. Both
 suppress alerts on that tick, so collapsing them into a single "no baseline" looks
 harmless.
 
@@ -66,6 +66,10 @@ wrong shape means the baseline is *gone*, this boot re-baselines silently, and
 everything currently open goes unannounced. Nothing can recover those keys, so the only
 useful response is to say so loudly.
 
+Every array element must already be a string. Coercing JSON `null`, numbers, or
+objects invents healthy-looking keys no monitor could have written and can make app
+validation disagree with the runner's baseline.
+
 An empty array is a **baseline**, not a first run — `echo '[]' > state.json` is the
 supported way to ask for the current backlog.
 
@@ -73,6 +77,7 @@ supported way to ask for the current backlog.
 - `test_an_unreadable_file_reads_as_first_run_AND_reports_corrupt`
 - `test_an_unparseable_file_reads_as_first_run_AND_reports_corrupt`
 - `test_an_empty_array_is_a_baseline_not_a_first_run`
+- `test_a_key_array_with_any_non_string_is_corrupt`
 
 ## 4. A failed post withholds only the keys that message covered
 
@@ -225,13 +230,22 @@ keyword, role, title, company, category, region, department, city, or other loca
 filter. The parser also requires the canonical route and checked structured contract
 filter ID `5`; a URL that merely looks plausible is not enough.
 
-Filtering a valid non-Stage card is deliberate defense against mixed upstream data.
-If the page declares positive Stage results but every valid card is non-Stage, the
-whole page fails. Likewise, a malformed card fails the page rather than disappearing
-from a healthy-looking partial result.
+Parser completion requires balanced HTML depth and finalized card, capture, and
+heading state. Each card has exactly three metadata fields. The known contract
+whitelist is `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`.
+Recognized non-Stage cards are deliberately excluded and logged; they do not fail the
+page merely for being non-Stage. An unknown label or metadata shape fails closed. If
+the page declares positive Stage results but every recognized card is non-Stage, the
+complete filter leak still fails rather than looking empty.
 
 - `test_stage_route_is_fixed_and_has_no_keyword_or_location_query`
-- `test_excludes_a_valid_non_stage_contract`
+- `test_truncated_document_fails_after_a_complete_card`
+- `test_missing_interior_closing_tag_fails`
+- `test_extra_closing_tag_fails_with_negative_depth`
+- `test_balanced_depth_with_unfinished_parser_state_fails`
+- `test_extra_muted_metadata_field_fails`
+- `test_unknown_contract_label_fails`
+- `test_excludes_a_recognized_non_stage_contract`
 - `test_a_complete_contract_filter_leak_fails_instead_of_looking_empty`
 - `test_a_malformed_card_fails_instead_of_being_skipped`
 
@@ -239,10 +253,13 @@ from a healthy-looking partial result.
 
 `apps/fashionjobs/src/fashionjobs/site.py`
 
-Missing state requires every declared page before the runner can create its silent
-baseline. Seeded reads may stop only at the first page with no ID unseen before that
-read. No page mutates committed IDs or records until every page required by that
-frontier succeeds, so a page-two error cannot bank page-one IDs.
+Every process startup requires a bounded full scan through the first page's declared
+end, even from seeded state. A successful process repeats that safety scan at exactly
+86,400 monotonic seconds; ordinary intervening reads may stop at the first page with
+no ID unseen before that read. Failed startup and due scans remain due because no
+candidate IDs, records, force flag, or completion timestamp commits until the entire
+required traversal succeeds. `MAX_PAGES=100` accepts page 100 and rejects a declared
+page 101 before the crawler can fan out unexpectedly.
 
 Numeric FJOB IDs never shrink when cards reorder or disappear. Full records remain
 available in memory when possible; otherwise `KnownJob` placeholders preserve the
@@ -251,31 +268,61 @@ fields agree, preferring a direct `/emploi/` URL. Promoted `/redir/` cards are p
 from the result HTML but never crawled for identity; traversal requests only the
 fixed Stage pagination URLs.
 
-- `test_missing_state_fetches_every_declared_page`
+The direct-URL preference and HTML content-type check are load-bearing too: a direct
+`/emploi/` record must replace an earlier promoted `/redir/` duplicate, and a 2xx
+non-HTML body is a source error rather than parser input.
+
 - `test_page_two_failure_discards_the_whole_candidate_read`
-- `test_seeded_frontier_stops_after_an_all_known_page`
+- `test_seeded_startup_scans_to_end_then_frontier_fast_stops`
+- `test_failed_seeded_startup_scan_retries_the_full_walk`
+- `test_seeded_frontier_still_stops_before_daily_full_scan_is_due`
+- `test_due_daily_scan_crosses_duplicates_to_find_a_later_new_id`
+- `test_failed_due_daily_scan_remains_due`
+- `test_successful_due_daily_scan_resets_the_deadline`
+- `test_declared_end_at_page_limit_is_valid`
+- `test_declared_end_above_page_limit_fails`
 - `test_same_read_duplicate_does_not_extend_frontier_traversal`
 - `test_reordered_or_removed_cards_do_not_shrink_returned_ids`
 - `test_full_record_is_retained_when_it_disappears_from_the_site`
 - `test_extracts_ordinary_and_promoted_stage_cards`
 - `test_duplicate_ids_keep_the_direct_emploi_url`
+- `test_non_html_response_raises_an_error`
 
-## 16. FashionJobs baseline and notification state never outrun delivery
+## 16. FashionJobs state and degraded items fail closed without blocking valid alerts
 
-`apps/fashionjobs/src/fashionjobs/monitor.py` / `runner.py`
+`apps/fashionjobs/src/fashionjobs/state.py` / `monitor.py` / `runner.py`
 
-The first complete read with no state is banked without alerts. A restart seeded by
-that persisted numeric-ID set does not duplicate alerts. Later listings produce one
-message each in `(published_at, job_id)` order. If a retryable Discord post fails, its
-covered ID stays out of state and is retried; it is committed only after successful
-delivery, without rolling back other successfully delivered messages.
+FashionJobs accepts persisted keys only when guarded integer conversion succeeds,
+the value is positive, and converting it back produces the identical canonical
+decimal string. One invalid key corrupts the entire state. `main.py` validates once,
+gives the source that state's exact key object, and gives the runner the identical
+`LoadedState`; corruption is loudly logged and silently rebaselined without a second
+disk load or divergent interpretation.
 
+The first complete read with no usable state is banked without alerts. A restart
+seeded by persisted IDs does not duplicate alerts. Later full jobs produce one
+message each in `(published_at, job_id)` order. A `KnownJob` has identity but no safe
+alert fields, so render omits it. The runner's unchanged uncovered-key guard logs and
+withholds only that placeholder; valid full jobs in the same batch still post and
+settle. Retryable Discord failures likewise leave only their covered IDs out of state
+until delivery succeeds.
+
+- `test_any_noncanonical_job_id_makes_the_whole_state_corrupt`
+- `test_canonical_positive_decimal_ids_are_preserved_exactly`
+- `test_a_job_id_too_large_for_safe_integer_conversion_is_corrupt`
+- `test_process_seeds_exact_state_and_reuses_one_http_client`
+- `test_process_marks_noncanonical_state_corrupt_before_source_and_runner`
+- `test_a_supplied_state_is_used_instead_of_reloading_the_file`
+- `test_a_corrupt_supplied_state_loudly_rebaselines_without_alerting`
 - `test_first_run_baselines_all_jobs_without_alerting`
 - `test_restart_with_persisted_ids_does_not_duplicate_alerts`
 - `test_failed_notification_is_withheld_then_retried_successfully`
 - `test_multiple_new_jobs_are_posted_in_deterministic_order`
 - `test_render_orders_new_jobs_by_timestamp_then_numeric_id`
 - `test_heartbeat_reports_the_tracked_listing_identity_count`
+- `test_mixed_job_and_placeholder_posts_job_and_withholds_only_placeholder`
+- `test_placeholder_only_batch_is_loudly_uncovered_without_raising`
+- `test_real_source_posts_one_new_job_without_duplicating_retained_ids`
 
 ## 17. FashionJobs source text cannot create a Discord mention
 

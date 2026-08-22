@@ -92,6 +92,14 @@ FashionJobs is configured to poll every 600 seconds; the shared runner applies i
 default 20 percent jitter. Its daily heartbeat is configured for `07:00`
 America/Denver.
 
+Each FashionJobs process startup performs one transactional full walk through the
+declared pagination range, capped at 100 pages. A successful process performs another
+full safety walk every 86,400 monotonic seconds; ordinary ticks between them normally
+fast-stop at page 1, or about six page-1 requests per hour. Failed startup or due
+walks remain due and retry from page 1 without advancing identity state. Plan network
+traffic as the ordinary six requests per hour plus up to one declared full walk daily
+and one per restart, with additional retries only after failed required scans.
+
 ```bash
 ./deploy.sh --plan      # plan only
 ./deploy.sh --verify    # verify only, change nothing
@@ -142,9 +150,9 @@ done
 ### FashionJobs rollout status
 
 Nothing in the FashionJobs feature work was deployed, applied, pushed as an image,
-or restarted. `v2.1.0` is the configured release tag in `apps.auto.tfvars`, not a
-claim about the image currently running in production. Before a later, separately
-authorized deployment, an operator still must:
+or restarted. Current production remains `v2.0.2`; `v2.1.0` is the desired release
+tag in `apps.auto.tfvars`, not the image currently running. Before a later,
+separately authorized deployment, an operator still must:
 
 1. supply `fashionjobs_discord_webhook_url` in the gitignored `terraform.tfvars`;
 2. build and push the `linux/amd64` FashionJobs image tagged `v2.1.0`; and
@@ -157,6 +165,11 @@ IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.0
 docker build --platform linux/amd64 --build-arg APP=fashionjobs -t "$IMAGE" .
 docker push "$IMAGE"
 ```
+
+Whether FashionJobs accepts the production GCE egress IP remains unresolved. This
+work did not test it. Operational setup still needs one bounded container-side smoke
+request before deployment; a block requires a new source decision, not a browser or
+fingerprint-bypass dependency in the shared library.
 
 If a build hangs with no output at all, the credential helper is stuck rather than the
 build being slow: every registry operation that consults credentials blocks, including
@@ -219,6 +232,12 @@ Losing an app's `state.json` is survivable: the next run records a fresh silent
 baseline, so nothing is falsely alerted. It does mean everything currently open
 goes unannounced, which is usually what you want. `echo '[]' > state.json` is the
 supported way to ask for the current backlog instead.
+
+State JSON arrays must contain strings. FashionJobs additionally accepts only
+canonical positive-decimal IDs that safely round-trip through integer conversion.
+Any invalid element marks the whole file corrupt; startup logs that loss loudly,
+performs its full scan, and writes a fresh silent baseline rather than partially
+trusting or coercing the file.
 
 For FashionJobs, inspect the persistent state file on the host without changing it:
 

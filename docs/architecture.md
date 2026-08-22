@@ -88,6 +88,11 @@ spacing, post-failure withholding, and key de-duplication.
 **The app owns** its source client, its key function, its alert rendering, its
 filtering, and any authentication.
 
+The shared Discord client surface is a structural `Protocol`, not a concrete
+HTTP-client type or dependency. The library owns one copy of Discord delivery and
+its credential-safety rules; each app owns and supplies the client used by its
+source and webhook wiring.
+
 FashionJobs therefore owns its HTML parsing and its fixed product rule: contract
 exactly `Stage`, anywhere in France, every role and category, with no keyword,
 title, company, region, department, or city filtering. Those product rules are not
@@ -121,19 +126,41 @@ and on-origin URL. A malformed card, response, next link, or required page fails
 whole read; it cannot become a successful empty poll or partially advance identity
 state.
 
+Parser completion means balanced HTML depth and no unfinished card, capture, or
+heading state. Each card must expose exactly three metadata fields. Contract labels
+are limited to `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`:
+recognized non-Stage cards are deliberately excluded and logged, while an unknown
+label or metadata shape fails closed. Declared pagination is capped by
+`MAX_PAGES=100` before traversal begins.
+
 Discovery on 2026-08-21 observed 1,266 active Stage listings across 42 pages and
 estimated roughly 15–25 new matching listings per day. These are point-in-time
 observations, not permanent inventory or arrival-rate guarantees. The estimated
 volume is why one timely message per listing remains reasonable instead of a digest.
 
-With no state file, the source traverses every declared page and the runner records
-the complete result as a silent first-run baseline. On restart, the state keys seed a
-numeric unseen-ID frontier. Pages are read in order until the first page containing
-no ID unseen before that read; only then may traversal stop. The committed ID set
-only grows inside the source transaction, and a listing that disappears from current
-HTML remains represented by a
-`KnownJob` placeholder. That makes restarts duplicate-free and makes the heartbeat's
-tracked count mean “listing identities seen,” not “cards on the last page read.”
+Shared state files are JSON arrays of strings; any non-string element makes the whole
+file corrupt. FashionJobs further requires every key to convert safely to a positive
+integer and round-trip to the identical canonical decimal string. Whitespace, signs,
+leading zeroes, zero, negatives, non-decimals, or integers too large for Python's
+guarded conversion all invalidate the whole state. `main.py` validates once: the
+source receives that validated state's keys and the runner receives the same
+`LoadedState` for first-run and corruption decisions. Invalid state therefore takes
+the existing loud-log, silent-rebaseline path without source/runner disagreement.
+
+Every newly constructed FashionJobs source makes one full transactional startup
+scan through the first page's declared end, even with seeded state. Missing, empty,
+or corrupt state becomes a silent first-run baseline; seeded state makes the startup
+scan a duplicate-free safety check. Only a successful full transaction clears the
+startup requirement and records the monotonic completion time. Successful processes
+repeat a full safety scan after 86,400 monotonic seconds. Failed startup or due scans
+commit neither candidate identity state nor the completion marker, so they remain
+due.
+
+Ordinary intervening ticks read pages in order and stop at the first page containing
+no ID unseen before that read. The retained ID set only grows, and a listing that
+disappears from current HTML remains represented by a `KnownJob` placeholder. That
+makes restarts duplicate-free and makes the heartbeat's tracked count mean “listing
+identities seen,” not “cards on the last page read.”
 
 Ordinary and promoted cards with the same numeric ID reconcile to one identity. Their
 core fields must agree, and a direct `/emploi/` URL wins over `/redir/`; the redirect
@@ -142,15 +169,13 @@ identity. After a successful read, newly observed full records are sorted by
 `(published_at, job_id)` and each produces one Discord message on that successful
 poll.
 
-At the 600-second interval, a seeded quiet frontier normally requests only page 1:
-about six FashionJobs result-page requests per hour, spread by 20 percent jitter.
-A missing or unusable state file has an unknown frontier and forces the first silent
-baseline through every declared page. An explicit empty baseline or exceptional
-turnover can also keep introducing unseen IDs through a complete walk. If a required
-page fails, the candidate read is discarded; recovery starts again at page 1 and
-repeats the traversal still required by the unchanged frontier. This bounds ordinary
-network and parsing work while preserving fail-closed recovery when a deeper scan is
-actually necessary.
+At the 600-second interval, an ordinary quiet frontier normally requests only page
+1: about six FashionJobs result-page requests per hour, spread by 20 percent jitter.
+Add up to one declared full walk every 86,400 seconds in a successful process and one
+on every process restart. Exceptional turnover may also keep the fast scan crossing
+unseen IDs. If a required page fails, recovery starts again at page 1 and repeats the
+still-due scan against unchanged state. The 100-page ceiling bounds unexpected
+network and parsing work without weakening fail-closed recovery.
 
 ### Health has three outcomes
 
@@ -198,6 +223,12 @@ If delivery fails retryably, that ID remains outside the saved baseline and is r
 on the next successful delivery; delivered IDs and other safely banked IDs still
 commit.
 
+`KnownJob` is identity-only degradation, not an alert. FashionJobs rendering omits
+those placeholders. The runner's existing uncovered-key guard logs and withholds only
+their keys, while valid full jobs in the same batch still post and settle. A committed
+fixture integration exercises the real `FashionJobsSource` through
+`FashionJobsMonitor` and `run_tick`, including retained identities and one new alert.
+
 ### The heartbeat lands at a wall-clock hour
 
 `HEARTBEAT_INTERVAL_SEC` alone anchors the heartbeat to process start, so it arrives
@@ -234,7 +265,7 @@ rather than polling forever with nowhere to report.
 ## Testing
 
 ```bash
-uv run pytest -q                                  # 374
+uv run pytest -q                                  # 415
 uv run mypy --strict lib apps tests tools
 uv run ruff check . && uv run ruff format --check .
 ./tools/parity-diff.sh                            # needs node + the sibling repos
@@ -275,10 +306,12 @@ leaving capacity for the OS, Docker, logging, and normal bursts. Between its
 ten-minute polls it adds only an idle Python process and small HTTP/HTML identity
 state; there is no browser, database, inbound listener, or worker.
 
-The infrastructure declares FashionJobs image tag `v2.1.0`, but that is desired
-setup, not evidence of the current production image. Nothing from this feature was
-deployed, applied, pushed as an image, or restarted. A webhook and a built and pushed
-`v2.1.0` image are still required before a separately authorized deployment.
+Production remains on `v2.0.2`; the infrastructure declares FashionJobs `v2.1.0` as
+desired setup, not current production. Nothing from this feature was deployed,
+applied, pushed as an image, or restarted. A webhook and a built and pushed `v2.1.0`
+image are still required before a separately authorized deployment. Whether
+FashionJobs accepts the GCE egress IP remains an unresolved deployment-time
+container smoke check; it was not tested by this work.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).
