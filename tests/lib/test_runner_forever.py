@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from monitor.config import RunnerConfig, load_runner_config
 from monitor.runner import run_forever
+from monitor.state import LoadedState
 from monitor.types import Embed, HeartbeatExtras, Message, OpsLabels, Payload, SourceBusy
 
 LABELS = OpsLabels(name="X monitor", tracked_noun="thing(s)", death_footer="footer.")
@@ -96,6 +97,70 @@ async def test_the_loop_baselines_then_alerts_and_persists(tmp_path: Path) -> No
     assert harness.posted == ["b"]  # tick 1 baselines silently, tick 2 alerts
     assert json.loads(state.read_text(encoding="utf-8")) == ["a", "b"]
     assert harness.slept == [10, 10]  # jitter 0 => exactly the interval
+
+
+async def test_a_supplied_state_is_used_instead_of_reloading_the_file(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    state.write_text('["disk-only"]', encoding="utf-8")
+    harness = Harness()
+
+    await run_forever(
+        ScriptedMonitor([[Thing("known"), Thing("new")]]),
+        cfg_for(state),
+        poster=harness.poster,
+        sleep=harness.sleep,
+        now_unix=harness.now,
+        rand=lambda: 0.5,
+        log=harness.logged.append,
+        max_ticks=1,
+        preloaded_state=LoadedState(keys={"known"}, corrupt=False),
+    )
+
+    assert harness.posted == ["new"]
+    assert json.loads(state.read_text(encoding="utf-8")) == ["known", "new"]
+
+
+async def test_a_caller_without_supplied_state_still_loads_the_file(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    state.write_text('["known"]', encoding="utf-8")
+    harness = Harness()
+
+    await run_forever(
+        ScriptedMonitor([[Thing("known"), Thing("new")]]),
+        cfg_for(state),
+        poster=harness.poster,
+        sleep=harness.sleep,
+        now_unix=harness.now,
+        rand=lambda: 0.5,
+        log=harness.logged.append,
+        max_ticks=1,
+    )
+
+    assert harness.posted == ["new"]
+
+
+async def test_a_corrupt_supplied_state_loudly_rebaselines_without_alerting(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.json"
+    state.write_text('["disk-only"]', encoding="utf-8")
+    harness = Harness()
+
+    await run_forever(
+        ScriptedMonitor([[Thing("current")]]),
+        cfg_for(state),
+        poster=harness.poster,
+        sleep=harness.sleep,
+        now_unix=harness.now,
+        rand=lambda: 0.5,
+        log=harness.logged.append,
+        max_ticks=1,
+        preloaded_state=LoadedState(keys=None, corrupt=True),
+    )
+
+    assert harness.posted == []
+    assert json.loads(state.read_text(encoding="utf-8")) == ["current"]
+    assert any("could not be read" in line for line in harness.logged)
 
 
 async def test_a_successful_tick_reports_its_tracked_item_count_in_the_heartbeat(

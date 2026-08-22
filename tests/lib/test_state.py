@@ -65,6 +65,17 @@ def test_a_json_object_is_not_a_baseline(tmp_path: Path) -> None:
     assert loaded.corrupt is True
 
 
+@pytest.mark.parametrize("raw", ["[null]", "[1]", '[{"id": 1}]'])
+def test_a_key_array_with_any_non_string_is_corrupt(tmp_path: Path, raw: str) -> None:
+    path = tmp_path / "non-string.json"
+    path.write_text(raw, encoding="utf-8")
+
+    loaded = load_state(str(path))
+
+    assert loaded.keys is None
+    assert loaded.corrupt is True
+
+
 def test_the_new_baseline_is_staged_in_a_sibling_before_it_replaces_the_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
