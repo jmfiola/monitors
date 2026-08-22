@@ -95,10 +95,12 @@ America/Denver.
 Each FashionJobs process startup performs one transactional full walk through the
 declared pagination range, capped at 100 pages. A successful process performs another
 full safety walk every 86,400 monotonic seconds; ordinary ticks between them normally
-fast-stop at page 1, or about six page-1 requests per hour. Failed startup or due
-walks remain due and retry from page 1 without advancing identity state. Plan network
-traffic as the ordinary six requests per hour plus up to one declared full walk daily
-and one per restart, with additional retries only after failed required scans.
+fast-stop at page 1, or about six page-1 requests per hour. An ordinary frontier scan
+continues to later pages whenever each page still introduces unseen IDs; that does
+not require an earlier failure. Failed startup or due walks remain due and retry from
+page 1 without advancing identity state. Plan network traffic as the ordinary six
+page-1 requests per hour, any pages required by newly advancing frontiers, plus up to
+one declared full walk daily and one per restart. Failed required scans add retries.
 
 ```bash
 ./deploy.sh --plan      # plan only

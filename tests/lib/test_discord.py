@@ -68,8 +68,8 @@ def test_retryable_covers_rate_limits_5xx_and_unknown_but_not_a_bad_request() ->
 
 
 async def test_post_accepts_any_client_with_the_right_shape() -> None:
-    # Proves the transport is structural: this stands in for curl_cffi, which
-    # fashionjobs needs and which is not an httpx.AsyncClient.
+    # Proves the transport is structural: a client only needs the Protocol's shape,
+    # not a concrete HTTP-client class owned by the shared library.
     seen: dict[str, object] = {}
 
     class FakeResponse:

@@ -254,12 +254,13 @@ complete filter leak still fails rather than looking empty.
 `apps/fashionjobs/src/fashionjobs/site.py`
 
 Every process startup requires a bounded full scan through the first page's declared
-end, even from seeded state. A successful process repeats that safety scan at exactly
-86,400 monotonic seconds; ordinary intervening reads may stop at the first page with
-no ID unseen before that read. Failed startup and due scans remain due because no
-candidate IDs, records, force flag, or completion timestamp commits until the entire
-required traversal succeeds. `MAX_PAGES=100` accepts page 100 and rejects a declared
-page 101 before the crawler can fan out unexpectedly.
+end, even from seeded state. After a successful scan, another becomes due when at
+least 86,400 monotonic seconds have elapsed and runs on the next poll; ordinary
+intervening reads may stop at the first page with no ID unseen before that read.
+Failed startup and due scans remain due because no candidate IDs, records, force
+flag, or completion timestamp commits until the entire required traversal succeeds.
+`MAX_PAGES=100` accepts page 100 and rejects a declared page 101 before the crawler
+can fan out unexpectedly.
 
 Numeric FJOB IDs never shrink when cards reorder or disappear. Full records remain
 available in memory when possible; otherwise `KnownJob` placeholders preserve the
@@ -304,8 +305,10 @@ seeded by persisted IDs does not duplicate alerts. Later full jobs produce one
 message each in `(published_at, job_id)` order. A `KnownJob` has identity but no safe
 alert fields, so render omits it. The runner's unchanged uncovered-key guard logs and
 withholds only that placeholder; valid full jobs in the same batch still post and
-settle. Retryable Discord failures likewise leave only their covered IDs out of state
-until delivery succeeds.
+settle. A retryable Discord failure withholds the failed message's covered IDs until
+delivery succeeds, while later messages are ordinarily still attempted. A 429 is the
+deliberate exception: the runner abandons all later messages, so the failed message's
+IDs and every later unattempted ID are unsettled and withheld for the next tick.
 
 - `test_any_noncanonical_job_id_makes_the_whole_state_corrupt`
 - `test_canonical_positive_decimal_ids_are_preserved_exactly`
@@ -317,6 +320,7 @@ until delivery succeeds.
 - `test_first_run_baselines_all_jobs_without_alerting`
 - `test_restart_with_persisted_ids_does_not_duplicate_alerts`
 - `test_failed_notification_is_withheld_then_retried_successfully`
+- `test_a_429_abandons_the_rest_of_the_batch`
 - `test_multiple_new_jobs_are_posted_in_deterministic_order`
 - `test_render_orders_new_jobs_by_timestamp_then_numeric_id`
 - `test_heartbeat_reports_the_tracked_listing_identity_count`

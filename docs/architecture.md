@@ -148,13 +148,15 @@ source receives that validated state's keys and the runner receives the same
 the existing loud-log, silent-rebaseline path without source/runner disagreement.
 
 Every newly constructed FashionJobs source makes one full transactional startup
-scan through the first page's declared end, even with seeded state. Missing, empty,
-or corrupt state becomes a silent first-run baseline; seeded state makes the startup
+scan through the first page's declared end, even with seeded state. Only missing or
+corrupt state becomes a silent first-run baseline. An explicit empty state is a
+deliberate, valid non-first-run baseline: the startup scan treats every current
+listing as fresh and alerts the current backlog. Other seeded state makes the startup
 scan a duplicate-free safety check. Only a successful full transaction clears the
-startup requirement and records the monotonic completion time. Successful processes
-repeat a full safety scan after 86,400 monotonic seconds. Failed startup or due scans
-commit neither candidate identity state nor the completion marker, so they remain
-due.
+startup requirement and records the monotonic completion time. A safety scan becomes
+due once at least 86,400 monotonic seconds have elapsed and runs on the next poll.
+Failed startup or due scans commit neither candidate identity state nor the
+completion marker, so they remain due.
 
 Ordinary intervening ticks read pages in order and stop at the first page containing
 no ID unseen before that read. The retained ID set only grows, and a listing that
