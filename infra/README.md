@@ -163,12 +163,13 @@ fix, but its first baseline failed closed, before state or alerts, on a structur
 present but blank location. `v2.1.5` permits that blank location text while retaining
 the required metadata slot. Its production rollout completed a 42-page baseline,
 persisted 1,242 unique identities, and sent no first-run alerts; it is the deployed
-tag declared in `apps.auto.tfvars`.
+tag. Pending `v2.1.6` keeps the fixed publication date and removes Discord's changing
+relative-time suffix; it is the tag declared in `apps.auto.tfvars`.
 
 From the repository root, the FashionJobs image step is:
 
 ```bash
-IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.5"
+IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.6"
 docker build --platform linux/amd64 --build-arg APP=fashionjobs -t "$IMAGE" .
 docker push "$IMAGE"
 ```
