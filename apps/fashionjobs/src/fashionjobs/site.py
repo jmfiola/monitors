@@ -101,8 +101,8 @@ class FashionJobsSource:
         self._clock = clock
         self._known_ids = {int(key) for key in initial_keys or set()}
         self._records: dict[int, FashionJob] = {}
-        self._force_full_scan = not initial_keys
-        self._last_full_scan_at = None if self._force_full_scan else self._clock()
+        self._force_full_scan = True
+        self._last_full_scan_at: float | None = None
 
     async def fetch(self) -> list[FashionItem]:
         now = self._clock()

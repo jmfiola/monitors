@@ -429,12 +429,16 @@ async def test_missing_and_empty_state_cross_duplicate_only_pages(
     assert {item.job_id for item in items} == {11999998, 12000001, 12000002, 12000003}
 
 
-async def test_seeded_frontier_stops_after_an_all_known_page() -> None:
+async def test_seeded_startup_scans_to_end_then_frontier_fast_stops() -> None:
     requested: list[str] = []
+    bodies = {
+        STAGE_URL: PAGE1_TWO,
+        page_url(2): with_first_card_appearances(PAGE2_LAST, 1),
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         requested.append(str(request.url))
-        return html_response(request, PAGE1_TWO)
+        return html_response(request, bodies[str(request.url)])
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         source = FashionJobsSource(
@@ -442,19 +446,54 @@ async def test_seeded_frontier_stops_after_an_all_known_page() -> None:
             initial_keys={"12000001", "12000002", "12000003"},
             log=lambda _message: None,
         )
+        await source.fetch()
+        startup_requested = requested.copy()
+        requested.clear()
         items = await source.fetch()
 
+    assert startup_requested == [STAGE_URL, page_url(2)]
     assert requested == [STAGE_URL]
     assert {item.job_id for item in items} == {12000001, 12000002, 12000003}
+
+
+async def test_failed_seeded_startup_scan_retries_the_full_walk() -> None:
+    requested: list[str] = []
+    bodies = three_page_bodies()
+    fail_page_two = True
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal fail_page_two
+        requested.append(str(request.url))
+        if str(request.url) == page_url(2) and fail_page_two:
+            fail_page_two = False
+            return httpx.Response(503, request=request)
+        return html_response(request, bodies[str(request.url)])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(
+            client,
+            initial_keys={"12000001", "12000002", "12000003"},
+            log=lambda _message: None,
+        )
+        with pytest.raises(FashionJobsHTTPError):
+            await source.fetch()
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2), STAGE_URL, page_url(2), page_url(3)]
+    assert {item.job_id for item in items} == {11999998, 12000001, 12000002, 12000003}
 
 
 async def test_seeded_frontier_still_stops_before_daily_full_scan_is_due() -> None:
     requested: list[str] = []
     now = 0.0
+    bodies = {
+        STAGE_URL: PAGE1_TWO,
+        page_url(2): with_first_card_appearances(PAGE2_LAST, 1),
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         requested.append(str(request.url))
-        return html_response(request, PAGE1_TWO)
+        return html_response(request, bodies[str(request.url)])
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         source = FashionJobsSource(
@@ -463,6 +502,9 @@ async def test_seeded_frontier_still_stops_before_daily_full_scan_is_due() -> No
             log=lambda _message: None,
             clock=lambda: now,
         )
+        await source.fetch()
+        assert requested == [STAGE_URL, page_url(2)]
+        requested.clear()
         now = 86_399.0
         await source.fetch()
 
@@ -485,6 +527,9 @@ async def test_due_daily_scan_crosses_duplicates_to_find_a_later_new_id() -> Non
             log=lambda _message: None,
             clock=lambda: now,
         )
+        await source.fetch()
+        assert requested == [STAGE_URL, page_url(2), page_url(3)]
+        requested.clear()
         now = 86_400.0
         items = await source.fetch()
 
@@ -496,7 +541,7 @@ async def test_failed_due_daily_scan_remains_due() -> None:
     requested: list[str] = []
     bodies = three_page_bodies()
     now = 0.0
-    fail_page_two = True
+    fail_page_two = False
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal fail_page_two
@@ -513,7 +558,11 @@ async def test_failed_due_daily_scan_remains_due() -> None:
             log=lambda _message: None,
             clock=lambda: now,
         )
+        await source.fetch()
+        assert requested == [STAGE_URL, page_url(2), page_url(3)]
+        requested.clear()
         now = 86_400.0
+        fail_page_two = True
         with pytest.raises(FashionJobsHTTPError):
             await source.fetch()
         items = await source.fetch()
@@ -538,6 +587,9 @@ async def test_successful_due_daily_scan_resets_the_deadline() -> None:
             log=lambda _message: None,
             clock=lambda: now,
         )
+        await source.fetch()
+        assert requested == [STAGE_URL, page_url(2), page_url(3)]
+        requested.clear()
         now = 86_400.0
         await source.fetch()
         requested.clear()
@@ -549,27 +601,43 @@ async def test_successful_due_daily_scan_resets_the_deadline() -> None:
 
 async def test_an_unseen_page_one_id_continues_until_an_all_known_page() -> None:
     requested: list[str] = []
+    steady_state = False
+    page_one_with_new_id = PAGE1_TWO.replace("12000001", "12000004")
 
     def handler(request: httpx.Request) -> httpx.Response:
         requested.append(str(request.url))
-        body = PAGE1_TWO if str(request.url) == STAGE_URL else PAGE2_LAST
+        if str(request.url) == STAGE_URL:
+            body = page_one_with_new_id if steady_state else PAGE1_TWO
+        else:
+            body = PAGE2_LAST
         return html_response(request, body)
 
     seed = {"12000002", "12000003", "11999999"}
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         source = FashionJobsSource(client, initial_keys=seed, log=lambda _message: None)
+        await source.fetch()
+        steady_state = True
+        requested.clear()
         items = await source.fetch()
 
     assert requested == [STAGE_URL, page_url(2)]
-    assert {item.job_id for item in items} == {11999999, 12000001, 12000002, 12000003}
+    assert {item.job_id for item in items} == {
+        11999999,
+        12000001,
+        12000002,
+        12000003,
+        12000004,
+    }
 
 
 async def test_same_read_duplicate_does_not_extend_frontier_traversal() -> None:
     requested: list[str] = []
+    startup_bodies = three_page_bodies()
+    steady_state = False
     page_one = PAGE1_TWO.replace(
         f'<a rel="end" href="{page_url(2)}">42</a>',
         f'<a rel="end" href="{page_url(3)}">42</a>',
-    )
+    ).replace("12000003", "12000004")
     page_two_duplicate = (
         page_one.replace(STAGE_URL, page_url(2), 1)
         .replace(
@@ -581,6 +649,8 @@ async def test_same_read_duplicate_does_not_extend_frontier_traversal() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         requested.append(str(request.url))
+        if not steady_state:
+            return html_response(request, startup_bodies[str(request.url)])
         if str(request.url) == STAGE_URL:
             return html_response(request, page_one)
         if str(request.url) == page_url(2):
@@ -593,25 +663,36 @@ async def test_same_read_duplicate_does_not_extend_frontier_traversal() -> None:
             initial_keys={"12000001", "12000002"},
             log=lambda _message: None,
         )
+        await source.fetch()
+        steady_state = True
+        requested.clear()
         items = await source.fetch()
 
     assert requested == [STAGE_URL, page_url(2)]
-    assert [item.job_id for item in items] == [12000001, 12000002, 12000003]
+    assert [item.job_id for item in items] == [
+        11999998,
+        12000001,
+        12000002,
+        12000003,
+        12000004,
+    ]
 
 
 async def test_reordered_or_removed_cards_do_not_shrink_returned_ids() -> None:
-    calls = 0
+    empty = False
 
     def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal calls
-        calls += 1
-        body = PAGE1_TWO if calls == 1 else fixture("empty-stage-page.html")
+        if empty:
+            body = fixture("empty-stage-page.html")
+        else:
+            body = PAGE1_TWO if str(request.url) == STAGE_URL else PAGE2_LAST
         return html_response(request, body)
 
     seed = {"11999999", "12000001", "12000002", "12000003"}
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         source = FashionJobsSource(client, initial_keys=seed, log=lambda _message: None)
         first = await source.fetch()
+        empty = True
         second = await source.fetch()
 
     expected = [11999999, 12000001, 12000002, 12000003]
