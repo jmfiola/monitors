@@ -38,6 +38,18 @@ def test_alert_contains_every_reliable_job_field() -> None:
     assert message.payload.allowed_mentions_parse == ()
 
 
+def test_alert_omits_blank_location_without_empty_fields() -> None:
+    message = format_job_alert(_job(location=""))
+    embed = message.payload.embeds[0]
+
+    assert [(field.name, field.value) for field in embed.fields or ()] == [
+        ("Company", "MAISON EXEMPLE"),
+        ("Contract", "Stage"),
+        ("Published", "<t:1787341827:F> · <t:1787341827:R>"),
+    ]
+    assert all(field.name and field.value for field in embed.fields or ())
+
+
 def test_source_markdown_is_escaped_and_everyone_is_disabled() -> None:
     message = format_job_alert(_job(title="**@everyone**", company="A_B`C"))
     assert message.payload.embeds[0].title == r"\*\*@everyone\*\*"

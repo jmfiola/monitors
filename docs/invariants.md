@@ -232,11 +232,13 @@ filter ID `5`; a URL that merely looks plausible is not enough.
 
 Parser completion requires balanced HTML depth and finalized card, capture, and
 heading state. Each card has exactly two semantic metadata fields, contract and
-location, and exactly one timezone-aware absolute `time-ago[data-value]`. Only the
-timestamp element's localized descendant display text may be empty and is ignored;
-empty or sibling semantic metadata remains visible to the exact shape guard. Void
-timestamp elements and nested metadata wrappers fail immediately. The known contract
-whitelist is `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`.
+location, and exactly one timezone-aware absolute `time-ago[data-value]`. The
+location slot is structurally required but its normalized text may be blank; this is
+an alert detail, not a route filter. Only the timestamp element's localized descendant
+display text may be empty and is ignored; empty sibling semantic metadata remains
+visible to the exact shape guard. Void timestamp elements and nested metadata wrappers
+fail immediately. The known contract whitelist is `Stage`, `CDI`, `CDD`, `Alternance`,
+`Intérim`, and `Free-lance`.
 Recognized non-Stage cards are deliberately excluded and logged; they do not fail the
 page merely for being non-Stage. An unknown label or metadata shape fails closed. If
 the page declares positive Stage results but every recognized card is non-Stage, the
@@ -360,10 +362,11 @@ IDs and every later unattempted ID are unsettled and withheld for the next tick.
 
 `apps/fashionjobs/src/fashionjobs/alert.py`
 
-Each listing gets one embed with title and URL plus `Company`, `Location`, `Contract`,
-and `Published` fields. Source Markdown is escaped within Discord limits, and the
-payload always sends `allowed_mentions: {"parse": []}`. Removing that pairing turns
-an upstream title such as `@everyone` into a channel-wide ping.
+Each listing gets one embed with title and URL plus `Company`, optional non-empty
+`Location`, `Contract`, and `Published` fields. Source Markdown is escaped within
+Discord limits, and the payload always sends `allowed_mentions: {"parse": []}`.
+Removing that pairing turns an upstream title such as `@everyone` into a channel-wide
+ping.
 
 - `test_alert_contains_every_reliable_job_field`
 - `test_source_markdown_is_escaped_and_everyone_is_disabled`

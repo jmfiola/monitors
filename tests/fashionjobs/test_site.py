@@ -3,6 +3,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from fashionjobs.alert import format_job_alert
 from fashionjobs.site import (
     STAGE_URL,
     FashionJobsError,
@@ -131,6 +132,31 @@ def test_extracts_ordinary_and_promoted_stage_cards() -> None:
     assert page.result_count == 1266
     assert page.next_url == "https://fr.fashionjobs.com/fr/contrat/Stage,5,2.html"
     assert page.last_page == 42
+
+
+def test_blank_location_slot_is_retained_and_formats_without_empty_alert_fields() -> None:
+    html = fixture("stage-page-36-blank-location.html")
+    page = parse_page(html, expected_url=page_url(36), expected_final_page=36)
+
+    assert [(job.job_id, job.location) for job in page.jobs] == [(11999996, "")]
+    fields = format_job_alert(page.jobs[0]).payload.embeds[0].fields or ()
+    assert [(field.name, field.value) for field in fields] == [
+        ("Company", "MAISON EXEMPLE"),
+        ("Contract", "Stage"),
+        ("Published", "<t:1787297400:F> · <t:1787297400:R>"),
+    ]
+    assert all(field.name and field.value for field in fields)
+
+    location_slot = (
+        '              <div class="muted-text muted-text--no-bold muted-text--primary">\n'
+        "                <span>   </span>\n"
+        "              </div>\n"
+    )
+    assert location_slot in html
+    missing_location_slot = html.replace(location_slot, "", 1)
+
+    with pytest.raises(FashionJobsParseError, match="exactly two metadata fields"):
+        parse_page(missing_location_slot, expected_url=page_url(36), expected_final_page=36)
 
 
 def test_titled_company_link_does_not_overwrite_job_url() -> None:

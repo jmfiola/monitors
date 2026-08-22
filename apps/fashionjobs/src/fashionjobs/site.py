@@ -545,8 +545,6 @@ class _FashionJobsPageParser(HTMLParser):
                 f"FashionJobs card {position} has an unknown contract label"
             )
         location = card.muted_values[1]
-        if not location:
-            raise FashionJobsParseError(f"FashionJobs card {position} missing location")
 
         job_id = _job_id_from_url(card.url)
         if job_id is None:
