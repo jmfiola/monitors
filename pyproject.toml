@@ -1,7 +1,7 @@
 # A virtual workspace root: no [project] of its own, just the members, the dev
 # toolchain, and one place for tool config. `uv sync` installs every member.
 [tool.uv.workspace]
-members = ["lib/monitor", "apps/melanzana", "apps/jeffco"]
+members = ["lib/monitor", "apps/melanzana", "apps/jeffco", "apps/fashionjobs"]
 
 [dependency-groups]
 dev = [

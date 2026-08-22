@@ -8,7 +8,22 @@ GCE `e2-micro`.
 | --- | --- | --- |
 | `melanzana` | Melanzana appointment slots | Cowlendar |
 | `jeffco` | Jeffco substitute teaching jobs | SmartFindExpress |
-| `fashionjobs` | fr.fashionjobs.com postings | planned |
+| `fashionjobs` | France-wide `Stage` listings, all roles and no keywords | [fixed FashionJobs HTML route](https://fr.fashionjobs.com/fr/contrat/Stage,5.html) |
+
+FashionJobs sends one Discord message for each newly observed internship on the
+next successful poll. It does not filter by role, title, company, category, region,
+department, city, or keyword.
+
+Discovery on 2026-08-21 observed 1,266 active Stage listings across 42 pages and
+supported an estimate of roughly 15–25 new matching listings per day. That
+point-in-time snapshot is not a permanent volume guarantee, but it supports useful
+per-listing notifications without a digest. Every process startup makes one bounded
+transactional full scan; a successful process repeats that safety scan every 86,400
+monotonic seconds. Ordinary intervening ticks fast-stop at the known frontier, so
+600-second polling is normally about six page-1 requests per hour plus at most one
+declared full walk daily and one per restart. Failed startup or due scans remain due
+until a full transaction succeeds. The `MAX_PAGES=100` ceiling bounds unexpected
+pagination while the quiet steady state keeps network, CPU, and memory impact modest.
 
 Every app implements four methods — `fetch`, `key`, `render`, `heartbeat_extras` — and
 the shared `run_forever()` owns the poll loop, state diffing, backoff, health, and
@@ -23,17 +38,18 @@ Discord delivery.
 
 ```bash
 uv sync
-uv run pytest -q                                   # 299
+uv run pytest -q                                   # 415
 uv run mypy --strict lib apps tests tools
 uv run ruff check . && uv run ruff format --check .
 ./tools/parity-diff.sh                             # needs node + the sibling repos
 ```
 
-Both apps have a TypeScript reference implementation in a sibling repo.
+Melanzana and Jeffco have TypeScript reference implementations in sibling repos.
 `parity-diff.sh` renders every Discord payload each implementation can produce on a
 frozen clock and requires the diff to be empty — it catches field ordering, number
 formatting and exact punctuation that unit tests miss. It is outside `pytest` because it
-needs those repos and a node toolchain.
+needs those repos and a node toolchain. FashionJobs is intentionally outside this
+shared parity scope and is covered by its Python fixtures and tests.
 
 ## Design decisions worth knowing up front
 
@@ -51,7 +67,7 @@ with the test that holds each one, is in [`docs/invariants.md`](docs/invariants.
    of escalating backoff, but still counts as an absence of data, so a permanently-busy
    source alerts eventually rather than going quiet forever.
 5. **`HEARTBEAT_AT`** fixes the heartbeat to an America/Denver wall-clock time instead of
-   drifting with process start. Both apps run `07:00`.
+   drifting with process start. All three apps are configured for `07:00`.
 
 ## Deploying
 
@@ -80,7 +96,8 @@ Logs are per app:
 ```bash
 ./infra/logs.sh melanzana
 ./infra/logs.sh jeffco --freshness=6h
+./infra/logs.sh fashionjobs --freshness=6h
 ```
 
-Both apps log nothing on a tick with no news, so a quiet log is normal — and means a hung
+Apps log nothing on a tick with no news, so a quiet log is normal — and means a hung
 loop looks the same as an idle one.

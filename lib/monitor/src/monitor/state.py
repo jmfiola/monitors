@@ -50,7 +50,11 @@ def load_state(path: str) -> LoadedState:
         # Valid JSON of the wrong shape is corruption too: iterating a dict would
         # silently produce a baseline of its keys.
         return LoadedState(keys=None, corrupt=True)
-    return LoadedState(keys={str(k) for k in parsed}, corrupt=False)
+    if any(not isinstance(key, str) for key in parsed):
+        # `save_state` only writes strings. Coercing arbitrary JSON values here
+        # invents healthy-looking keys that no monitor could have persisted.
+        return LoadedState(keys=None, corrupt=True)
+    return LoadedState(keys=set(parsed), corrupt=False)
 
 
 def save_state(path: str, keys: set[str]) -> None:

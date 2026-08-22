@@ -1,7 +1,7 @@
 ###############################################################################
 # Artifact Registry — one Docker repository per app, named after its key.
 #
-# Both repositories live here, so one state describes the whole host.
+# All repositories live here, so one state describes the whole host.
 ###############################################################################
 resource "google_artifact_registry_repository" "app" {
   for_each = var.apps
@@ -81,6 +81,18 @@ locals {
       },
       var.jeffco_status_webhook_url != "" ? { STATUS_WEBHOOK_URL = var.jeffco_status_webhook_url } : {},
       var.jeffco_heartbeat_at != "" ? { HEARTBEAT_AT = var.jeffco_heartbeat_at } : {},
+    )
+
+    fashionjobs = merge(
+      {
+        DISCORD_WEBHOOK_URL    = var.fashionjobs_discord_webhook_url
+        STATE_PATH             = "/data/state.json"
+        POLL_INTERVAL_SEC      = tostring(var.fashionjobs_poll_interval_sec)
+        HEARTBEAT_INTERVAL_SEC = tostring(var.heartbeat_interval_sec)
+        STALL_ALERT_SEC        = tostring(var.stall_alert_sec)
+      },
+      var.fashionjobs_status_webhook_url != "" ? { STATUS_WEBHOOK_URL = var.fashionjobs_status_webhook_url } : {},
+      var.fashionjobs_heartbeat_at != "" ? { HEARTBEAT_AT = var.fashionjobs_heartbeat_at } : {},
     )
   }
 

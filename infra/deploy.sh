@@ -62,7 +62,7 @@ verify() {
   if [[ -z $units_json || $units_json == "null" ]]; then
     # No `units` output in state yet (e.g. before the first apply). Update this list
     # by hand if an app is added while state is in this condition.
-    units_json='["melanzana-monitor.service", "jeffco-monitor.service"]'
+    units_json='["melanzana-monitor.service", "jeffco-monitor.service", "fashionjobs-monitor.service"]'
   fi
   local failed=""
   local unit

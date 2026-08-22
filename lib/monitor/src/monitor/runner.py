@@ -21,7 +21,7 @@ from monitor.discord import (
     format_status_alert,
 )
 from monitor.health import HealthState, init_health, should_alert_stall, should_heartbeat
-from monitor.state import load_state, save_state
+from monitor.state import LoadedState, load_state, save_state
 from monitor.timing import next_backoff, system_now, with_jitter
 from monitor.types import HeartbeatExtras, Monitor, Payload, SourceBusy
 
@@ -292,15 +292,18 @@ async def run_forever[Item](
     rand: Callable[[], float] = random.random,
     log: Callable[[str], None] | None = None,
     max_ticks: int | None = None,
+    preloaded_state: LoadedState | None = None,
 ) -> None:
     """Own the loop: load state, poll, alert, persist, report, sleep.
 
     `max_ticks` exists so the loop's own wiring — the save, the health folding, the
     choice between jitter and backoff — is testable. Production passes None.
+    `preloaded_state` lets an app validate one exact state object before both its
+    source and this loop consume it; ordinary callers continue loading here.
     """
     emit = make_log(cfg.log_prefix) if log is None else log
 
-    loaded = load_state(cfg.state_path)
+    loaded = load_state(cfg.state_path) if preloaded_state is None else preloaded_state
     first_run = loaded.keys is None
     if loaded.corrupt:
         # Missing and corrupt both re-baseline, and they mean opposite things.

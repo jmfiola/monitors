@@ -36,7 +36,7 @@ PAYLOAD_REJECTED_STATUS = frozenset({400, 413, 422})
 
 
 class HttpResponse(Protocol):
-    """Just the status. Both httpx and curl_cffi responses satisfy this."""
+    """The structural response surface shared Discord transport needs."""
 
     @property
     def status_code(self) -> int: ...
@@ -45,10 +45,8 @@ class HttpResponse(Protocol):
 class HttpClient(Protocol):
     """The transport surface `post` needs, structurally.
 
-    Deliberately NOT `httpx.AsyncClient`. fashionjobs must use `curl_cffi` with
-    `impersonate="chrome"` — that is the reason this project is Python at all — and
-    naming a concrete client here would force it to reimplement this function,
-    security invariant included.
+    Deliberately not a concrete client: app wiring owns its HTTP transport, while
+    this library owns Discord delivery and its security invariants once.
     """
 
     async def post(self, url: str, *, json: Any, headers: Mapping[str, str]) -> HttpResponse: ...
