@@ -310,12 +310,11 @@ leaving capacity for the OS, Docker, logging, and normal bursts. Between its
 ten-minute polls it adds only an idle Python process and small HTTP/HTML identity
 state; there is no browser, database, inbound listener, or worker.
 
-Production remains on `v2.0.2`; the infrastructure declares FashionJobs `v2.1.0` as
-desired setup, not current production. Nothing from this feature was deployed,
-applied, pushed as an image, or restarted. A webhook and a built and pushed `v2.1.0`
-image are still required before a separately authorized deployment. Whether
-FashionJobs accepts the GCE egress IP remains an unresolved deployment-time
-container smoke check; it was not tested by this work.
+Melanzana and Jeffco remain on `v2.0.2`. The first FashionJobs `v2.1.0` rollout
+proved GCE egress and Discord delivery but exposed that the localized timestamp
+display text can be empty even though the absolute `data-value` is present. The
+failed image remains immutable; infrastructure declares the focused `v2.1.1`
+hotfix instead of overwriting it.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).
