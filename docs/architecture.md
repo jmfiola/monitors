@@ -135,12 +135,24 @@ Parser completion means balanced HTML depth and no unfinished card, capture, or
 heading state. Each card must expose exactly two semantic metadata fields: contract
 and location. Exactly one timezone-aware absolute `time-ago[data-value]` is required.
 Only that element's localized descendant display text is ignored; empty or sibling
-semantic metadata still counts and fails the exact shape guard. Void timestamp
-elements and nested metadata wrappers fail immediately. Contract labels are
-limited to `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`:
+semantic metadata still counts and fails the exact shape guard, except that a
+structurally present location slot may contain blank text and is then omitted from
+the alert. Void timestamp elements and nested metadata wrappers fail immediately.
+Contract labels are limited to `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and
+`Free-lance`:
 recognized non-Stage cards are deliberately excluded and logged, while an unknown
-label or metadata shape fails closed. Declared pagination is capped by
-`MAX_PAGES=100` before traversal begins.
+label or metadata shape fails closed. Every declared end, including a later
+promotion, is capped by `MAX_PAGES=100` before it extends traversal.
+
+FashionJobs can expose extra promoted cards on page 1: the first declared end may
+therefore be lower than a later end reached through the validated sequential next
+links. The source promotes that bound and completes the expanded walk, but a lower
+later end still aborts the read. A pagination-free positive page is valid only when
+page 1 self-proves that its declared result count equals its visible unique IDs
+(duplicate appearances do not add IDs), or when the source has already passed that
+exact final page number to the parser. A zero-result page 1 remains valid. Any other
+pagination-free positive page, a final-page next link, and any malformed or
+unexpected next link remain failures.
 
 Discovery on 2026-08-21 observed 1,266 active Stage listings across 42 pages and
 estimated roughly 15–25 new matching listings per day. These are point-in-time
@@ -166,6 +178,11 @@ startup requirement and records the monotonic completion time. A safety scan bec
 due once at least 86,400 monotonic seconds have elapsed and runs on the next poll.
 Failed startup or due scans commit neither candidate identity state nor the
 completion marker, so they remain due.
+
+FashionJobs may render responsive pagination controls twice. Anchor `rel` values
+are case-insensitive token sets, so repeated `next` or `end` declarations are
+accepted only when every declaration has the same valid Stage URL; missing or
+conflicting declarations fail closed before the transaction can commit.
 
 Ordinary intervening ticks read pages in order and stop at the first page containing
 no ID unseen before that read. The retained ID set only grows, and a listing that
@@ -226,9 +243,10 @@ it went to the same dead endpoint, which is why those two rows differ.
 
 For FashionJobs, each message covers exactly its numeric listing ID. The embed title
 is the listing title, the URL is its FashionJobs link, and the fields appear as
-`Company`, `Location`, `Contract`, then `Published` with absolute and relative Discord
-timestamps. Its description is `New FashionJobs internship` and its footer is
-`FashionJobs.com France`. Source Markdown is escaped, field limits are respected, and
+`Company`, optional non-empty `Location`, `Contract`, then `Published` with absolute
+Discord time only; it does not include Discord's changing relative-time style. Its
+description is `New FashionJobs internship`, and the redundant FashionJobs France
+footer is omitted. Source Markdown is escaped, field limits are respected, and
 `allowed_mentions.parse` is empty, so source text such as `@everyone` cannot ping.
 If delivery fails retryably, that ID remains outside the saved baseline and is retried
 on the next successful delivery; delivered IDs and other safely banked IDs still
@@ -321,8 +339,17 @@ Melanzana and Jeffco remain on `v2.0.2`. The first FashionJobs `v2.1.0` rollout
 proved GCE egress and Discord delivery but exposed that the localized timestamp
 display text can be empty even though the absolute `data-value` is present. A
 one-page `v2.1.1` smoke then exposed titled recruitment links surrounding the real
-job link. Both published images remain immutable; infrastructure declares `v2.1.2`
-with both focused parser fixes.
+job link. `v2.1.2` passed its focused smoke, but its first baseline exposed the
+promoted/final-page pagination shape. All published images remain immutable;
+`v2.1.3` remains undeployed after its structural smoke exposed identical responsive
+pagination anchors. `v2.1.4` contained the focused pagination fix, but its first
+baseline failed closed, before state or alerts, on a structurally present but blank
+location. `v2.1.5` preserves the required location slot while allowing blank text
+and omitting the unavailable field from Discord alerts. Its production rollout
+completed a 42-page baseline, persisted 1,242 unique identities, and sent no
+first-run alerts. Infrastructure declares pending `v2.1.6`, which keeps the fixed
+publication date while removing Discord's changing relative-time suffix and the
+redundant FashionJobs France footer from job alerts.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).

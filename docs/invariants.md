@@ -232,11 +232,13 @@ filter ID `5`; a URL that merely looks plausible is not enough.
 
 Parser completion requires balanced HTML depth and finalized card, capture, and
 heading state. Each card has exactly two semantic metadata fields, contract and
-location, and exactly one timezone-aware absolute `time-ago[data-value]`. Only the
-timestamp element's localized descendant display text may be empty and is ignored;
-empty or sibling semantic metadata remains visible to the exact shape guard. Void
-timestamp elements and nested metadata wrappers fail immediately. The known contract
-whitelist is `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`.
+location, and exactly one timezone-aware absolute `time-ago[data-value]`. The
+location slot is structurally required but its normalized text may be blank; this is
+an alert detail, not a route filter. Only the timestamp element's localized descendant
+display text may be empty and is ignored; empty sibling semantic metadata remains
+visible to the exact shape guard. Void timestamp elements and nested metadata wrappers
+fail immediately. The known contract whitelist is `Stage`, `CDI`, `CDD`, `Alternance`,
+`Intérim`, and `Free-lance`.
 Recognized non-Stage cards are deliberately excluded and logged; they do not fail the
 page merely for being non-Stage. An unknown label or metadata shape fails closed. If
 the page declares positive Stage results but every recognized card is non-Stage, the
@@ -277,6 +279,18 @@ Failed startup and due scans remain due because no candidate IDs, records, force
 flag, or completion timestamp commits until the entire required traversal succeeds.
 `MAX_PAGES=100` accepts page 100 and rejects a declared page 101 before the crawler
 can fan out unexpectedly.
+
+When a validated next-link chain reaches a later declared end, the transaction
+promotes its bound and traverses through that page; a later lower end still fails.
+A pagination-free positive page is accepted only when page 1 self-proves that its
+declared result count equals its visible unique IDs, or when the source explicitly
+supplied that exact requested page as the final page learned earlier in the same
+walk. A zero-result page 1 remains valid. Other pagination-free positive pages,
+final-page next links, malformed next URLs, cycles, and partial failures remain
+fail-closed transaction aborts. Responsive anchor `rel` values are case-insensitive
+token sets; repeated `next` or `end` declarations are valid only when every
+declaration has the same valid Stage URL, while missing or conflicting declarations
+fail closed before state or full-scan completion commits.
 
 Numeric FJOB IDs never shrink when cards reorder or disappear. Full records remain
 available in memory when possible; otherwise `KnownJob` placeholders preserve the
@@ -348,12 +362,16 @@ IDs and every later unattempted ID are unsettled and withheld for the next tick.
 
 `apps/fashionjobs/src/fashionjobs/alert.py`
 
-Each listing gets one embed with title and URL plus `Company`, `Location`, `Contract`,
-and `Published` fields. Source Markdown is escaped within Discord limits, and the
+Each listing gets one embed with title and URL plus `Company`, optional non-empty
+`Location`, `Contract`, and `Published` fields. Publication time uses Discord's fixed
+absolute style and never its changing relative style. The embed omits the redundant
+FashionJobs France footer. Source Markdown is escaped within Discord limits, and the
 payload always sends `allowed_mentions: {"parse": []}`. Removing that pairing turns
 an upstream title such as `@everyone` into a channel-wide ping.
 
 - `test_alert_contains_every_reliable_job_field`
+- `test_alert_publication_time_is_fixed_not_relative`
+- `test_alert_omits_redundant_fashionjobs_france_footer`
 - `test_source_markdown_is_escaped_and_everyone_is_disabled`
 - `test_escaped_title_and_fields_respect_discord_limits_without_dangling_escape`
 
