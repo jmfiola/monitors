@@ -242,9 +242,10 @@ And **`-exec` is load-bearing**: an ad-hoc `docker exec` into a container also l
 image, so without it one memory probe buries the real deploys (measured: 295 matching
 entries against 78).
 
-Exactly two saved queries exist in Logs Explorer (project `cobs-cloud`, location
-`global`) — `melanzana-monitor-logs` and `jeffco-monitor-logs`, one per app, each
-carrying the union above. There is deliberately no third, cross-app query.
+Exactly three saved queries exist in Logs Explorer (project `cobs-cloud`, location
+`global`) — `melanzana-monitor-logs`, `jeffco-monitor-logs`, and
+`fashionjobs-monitor-logs`, one per app, each carrying the union above. There is
+deliberately no fourth, cross-app query.
 
 `--order=asc` is handled by the script rather than passed through, because
 `gcloud logging read` **ignores `--freshness` when asked for ascending order** — it
