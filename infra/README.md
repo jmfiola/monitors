@@ -163,9 +163,10 @@ fix, but its first baseline failed closed, before state or alerts, on a structur
 present but blank location. `v2.1.5` permits that blank location text while retaining
 the required metadata slot. Its production rollout completed a 42-page baseline,
 persisted 1,242 unique identities, and sent no first-run alerts; it is the deployed
-tag. Pending `v2.1.6` keeps the fixed publication date while removing Discord's
-changing relative-time suffix and the redundant FashionJobs France footer; it is the
-tag declared in `apps.auto.tfvars`.
+predecessor. `v2.1.6` keeps the fixed publication date while removing Discord's
+changing relative-time suffix and the redundant FashionJobs France footer. Its
+rollout retained the baseline, delivered one newly observed listing, and persisted
+1,243 unique identities; it is the deployed tag declared in `apps.auto.tfvars`.
 
 From the repository root, the FashionJobs image step is:
 
