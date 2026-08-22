@@ -116,25 +116,32 @@ def test_links_to_the_available_jobs_page() -> None:
 def test_a_full_day_duration_is_not_mentioned() -> None:
     # FULL is the overwhelming majority; naming it on every alert would be noise.
     messages = format_job_alerts([(_job(duration_type="FULL"), DATE_LINE)])
-    assert "Duration" not in messages[0].payload.embeds[0].description
+    description = messages[0].payload.embeds[0].description
+    assert description is not None
+    assert "Duration" not in description
 
 
 def test_a_partial_day_duration_is_mentioned() -> None:
     messages = format_job_alerts([(_job(duration_type="HALF_DAY_AM"), DATE_LINE)])
-    assert "**Duration:** HALF_DAY_AM" in messages[0].payload.embeds[0].description
+    description = messages[0].payload.embeds[0].description
+    assert description is not None
+    assert "**Duration:** HALF_DAY_AM" in description
 
 
 def test_omits_the_teacher_line_when_sfe_names_no_employee() -> None:
     # Not an empty "**Teacher:** " line -- an absent field should look absent.
     messages = format_job_alerts([(_job(employee_first_name="", employee_last_name=""), DATE_LINE)])
     description = messages[0].payload.embeds[0].description
+    assert description is not None
     assert "Teacher" not in description
     assert "**Dates:**" in description
 
 
 def test_falls_back_rather_than_printing_undefined_for_a_missing_subject() -> None:
     messages = format_job_alerts([(_job(classf_name=""), DATE_LINE)])
-    assert "**Subject:** Not specified" in messages[0].payload.embeds[0].description
+    description = messages[0].payload.embeds[0].description
+    assert description is not None
+    assert "**Subject:** Not specified" in description
 
 
 def test_gives_every_job_its_own_message_never_two_embeds_in_one() -> None:

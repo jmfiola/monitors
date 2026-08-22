@@ -245,8 +245,8 @@ For FashionJobs, each message covers exactly its numeric listing ID. The embed t
 is the listing title, the URL is its FashionJobs link, and the fields appear as
 `Company`, optional non-empty `Location`, `Contract`, then `Published` with absolute
 Discord time only; it does not include Discord's changing relative-time style. Its
-description is `New FashionJobs internship`, and the redundant FashionJobs France
-footer is omitted. Source Markdown is escaped, field limits are respected, and
+description and the redundant FashionJobs France footer are omitted. Source Markdown
+is escaped, field limits are respected, and
 `allowed_mentions.parse` is empty, so source text such as `@everyone` cannot ping.
 If delivery fails retryably, that ID remains outside the saved baseline and is retried
 on the next successful delivery; delivered IDs and other safely banked IDs still

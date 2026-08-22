@@ -31,6 +31,13 @@ def test_embed_omits_url_fields_and_footer_when_absent() -> None:
     }
 
 
+def test_embed_omits_description_when_absent() -> None:
+    assert Embed(title="t", description=None, color=1).to_dict() == {
+        "title": "t",
+        "color": 1,
+    }
+
+
 def test_embed_emits_an_empty_fields_array_when_given_one() -> None:
     # formatAlert always sets `fields`, even when the list is empty, so an empty
     # tuple must render as [] rather than being dropped.

@@ -41,7 +41,7 @@ def format_job_alert(job: FashionJob) -> Message:
     )
     embed = Embed(
         title=discord_text(job.title, 256),
-        description="New FashionJobs internship",
+        description=None,
         color=GREEN,
         url=job.url,
         fields=tuple(fields),

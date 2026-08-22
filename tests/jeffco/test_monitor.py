@@ -244,6 +244,8 @@ async def test_render_resolves_dates_per_job() -> None:
     assert len(messages) == 2
     first = messages[0].payload.embeds[0].description
     second = messages[1].payload.embeds[0].description
+    assert first is not None
+    assert second is not None
     assert "Fri Oct 16 · Mon Oct 19, 7:45 AM – 3:30 PM" in first  # noqa: RUF001 -- EN DASH
     assert "Fri Sep 4, 7:45 AM – 3:30 PM" in second  # noqa: RUF001 -- EN DASH
     assert "approximate" not in first
@@ -278,8 +280,12 @@ async def test_a_failed_detail_fetch_degrades_only_that_one_job() -> None:
         messages = await monitor.render(jobs)
 
     assert len(messages) == 2
-    assert "approximate" not in messages[0].payload.embeds[0].description
-    assert "approximate, check SFE" in messages[1].payload.embeds[0].description
+    first = messages[0].payload.embeds[0].description
+    second = messages[1].payload.embeds[0].description
+    assert first is not None
+    assert second is not None
+    assert "approximate" not in first
+    assert "approximate, check SFE" in second
 
 
 # --- heartbeat_extras() -----------------------------------------------------

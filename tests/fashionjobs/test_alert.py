@@ -26,6 +26,7 @@ def test_alert_contains_every_reliable_job_field() -> None:
     message = format_job_alert(_job())
     embed = message.payload.embeds[0]
     assert embed.title == "Stage Assistant Produit"
+    assert embed.description is None
     assert embed.url is not None
     assert embed.url.endswith(",12000001.html")
     assert [(field.name, field.value) for field in embed.fields or ()] == [
@@ -36,6 +37,7 @@ def test_alert_contains_every_reliable_job_field() -> None:
     ]
     assert message.covers == ("12000001",)
     assert message.payload.allowed_mentions_parse == ()
+    assert "description" not in message.payload.to_dict()["embeds"][0]
 
 
 def test_alert_omits_blank_location_without_empty_fields() -> None:

@@ -316,7 +316,9 @@ async def test_a_busy_outcome_latches_one_busy_alert_and_recovers() -> None:
         log=noop_log,
     )
     assert len(posts.posts) == 1
-    assert "in use elsewhere" in posts.posts[0].embeds[0].description
+    description = posts.posts[0].embeds[0].description
+    assert description is not None
+    assert "in use elsewhere" in description
     assert health.death_alerted is True  # latched, so it does not repeat
 
     health = await run_liveness(
@@ -375,6 +377,7 @@ async def test_one_real_fault_forfeits_the_busy_grace_window() -> None:
     # The death wording: it counts the failures and carries the app's death footer
     # ("the monitor may be blocked or down" for a real app), and it does NOT excuse
     # the absence as someone using the account.
+    assert embed.description is not None
     assert "3 consecutive failures" in embed.description
     assert "in use elsewhere" not in embed.description
     assert embed.footer_text == LABELS.death_footer

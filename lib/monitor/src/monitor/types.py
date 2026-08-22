@@ -50,7 +50,7 @@ class Field:
 @dataclass(frozen=True)
 class Embed:
     title: str
-    description: str
+    description: str | None
     color: int
     url: str | None = None
     fields: tuple[Field, ...] | None = None
@@ -63,7 +63,8 @@ class Embed:
         out: dict[str, Any] = {"title": self.title}
         if self.url is not None:
             out["url"] = self.url
-        out["description"] = self.description
+        if self.description is not None:
+            out["description"] = self.description
         out["color"] = self.color
         if self.fields is not None:
             out["fields"] = [f.to_dict() for f in self.fields]

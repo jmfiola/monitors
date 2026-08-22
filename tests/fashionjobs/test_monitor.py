@@ -236,7 +236,9 @@ def test_heartbeat_reports_the_tracked_listing_identity_count() -> None:
 
     payload = format_heartbeat(LABELS, state, 4600)
 
-    assert "tracking 4 listing identity(ies)" in payload.embeds[0].description
+    description = payload.embeds[0].description
+    assert description is not None
+    assert "tracking 4 listing identity(ies)" in description
 
 
 async def test_render_orders_new_jobs_by_timestamp_then_numeric_id() -> None:
