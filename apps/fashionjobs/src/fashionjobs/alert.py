@@ -45,7 +45,6 @@ def format_job_alert(job: FashionJob) -> Message:
         color=GREEN,
         url=job.url,
         fields=tuple(fields),
-        footer_text="FashionJobs.com France",
     )
     return Message(
         payload=Payload(embeds=(embed,), allowed_mentions_parse=()),

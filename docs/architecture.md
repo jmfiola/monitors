@@ -245,8 +245,8 @@ For FashionJobs, each message covers exactly its numeric listing ID. The embed t
 is the listing title, the URL is its FashionJobs link, and the fields appear as
 `Company`, optional non-empty `Location`, `Contract`, then `Published` with absolute
 Discord time only; it does not include Discord's changing relative-time style. Its
-description is `New FashionJobs internship` and its footer is `FashionJobs.com
-France`. Source Markdown is escaped, field limits are respected, and
+description is `New FashionJobs internship`, and the redundant FashionJobs France
+footer is omitted. Source Markdown is escaped, field limits are respected, and
 `allowed_mentions.parse` is empty, so source text such as `@everyone` cannot ping.
 If delivery fails retryably, that ID remains outside the saved baseline and is retried
 on the next successful delivery; delivered IDs and other safely banked IDs still
@@ -348,8 +348,8 @@ location. `v2.1.5` preserves the required location slot while allowing blank tex
 and omitting the unavailable field from Discord alerts. Its production rollout
 completed a 42-page baseline, persisted 1,242 unique identities, and sent no
 first-run alerts. Infrastructure declares pending `v2.1.6`, which keeps the fixed
-publication date and removes Discord's changing relative-time suffix from job
-alerts.
+publication date while removing Discord's changing relative-time suffix and the
+redundant FashionJobs France footer from job alerts.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).

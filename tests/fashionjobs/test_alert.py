@@ -60,6 +60,12 @@ def test_alert_publication_time_is_fixed_not_relative() -> None:
     assert ":R>" not in published.value
 
 
+def test_alert_omits_redundant_fashionjobs_france_footer() -> None:
+    message = format_job_alert(_job())
+
+    assert message.payload.embeds[0].footer_text is None
+
+
 def test_source_markdown_is_escaped_and_everyone_is_disabled() -> None:
     message = format_job_alert(_job(title="**@everyone**", company="A_B`C"))
     assert message.payload.embeds[0].title == r"\*\*@everyone\*\*"
