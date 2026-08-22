@@ -283,6 +283,9 @@ class _FashionJobsPageParser(HTMLParser):
         elif "muted-text" in classes:
             self._start_capture("muted")
         elif "time-ago" in classes:
+            if self._capture is not None and self._capture[0] == "muted":
+                _, capture_depth, _ = self._capture
+                self._capture = ("timestamp", capture_depth, [])
             value = attributes.get("data-value")
             if value is not None:
                 try:
@@ -314,7 +317,7 @@ class _FashionJobsPageParser(HTMLParser):
             if self._card is not None and value:
                 if kind == "company":
                     self._card.company = value
-                else:
+                elif kind == "muted":
                     self._card.muted_values.append(value)
             self._capture = None
 
@@ -431,10 +434,10 @@ class _FashionJobsPageParser(HTMLParser):
             raise FashionJobsParseError(
                 f"FashionJobs card {position} has a timezone-naive publication timestamp"
             )
-        if len(card.muted_values) != 3:
+        if len(card.muted_values) != 2:
             raise FashionJobsParseError(
                 f"FashionJobs card {position} missing required field: "
-                "expected exactly three metadata fields"
+                "expected exactly two metadata fields"
             )
         contract = card.muted_values[0]
         if not contract:

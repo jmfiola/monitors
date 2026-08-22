@@ -127,7 +127,9 @@ whole read; it cannot become a successful empty poll or partially advance identi
 state.
 
 Parser completion means balanced HTML depth and no unfinished card, capture, or
-heading state. Each card must expose exactly three metadata fields. Contract labels
+heading state. Each card must expose exactly two semantic metadata fields: contract
+and location. The localized timestamp display text is optional and is not metadata;
+the timezone-aware absolute `time-ago[data-value]` remains required. Contract labels
 are limited to `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`:
 recognized non-Stage cards are deliberately excluded and logged, while an unknown
 label or metadata shape fails closed. Declared pagination is capped by

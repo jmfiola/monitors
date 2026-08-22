@@ -284,13 +284,12 @@ def test_duplicate_appearances_of_the_only_result_are_valid() -> None:
     assert page.last_page == 1
 
 
-def test_missing_third_muted_value_raises() -> None:
-    html = fixture("stage-page-1.html").replace(
-        "muted-text muted-text--no-bold muted-text--light", "missing-muted-value", 1
-    )
+def test_empty_timestamp_display_text_is_valid() -> None:
+    html = fixture("stage-page-1.html").replace("il y a une heure", "", 1)
 
-    with pytest.raises(FashionJobsParseError, match="required field"):
-        parse_page(html, expected_url=STAGE_URL)
+    page = parse_page(html, expected_url=STAGE_URL)
+
+    assert page.jobs[0].published_at == datetime.fromisoformat("2026-08-21T21:50:27+02:00")
 
 
 def test_extra_muted_metadata_field_fails() -> None:
@@ -304,7 +303,7 @@ def test_extra_muted_metadata_field_fails() -> None:
         1,
     )
 
-    with pytest.raises(FashionJobsParseError, match="exactly three metadata fields"):
+    with pytest.raises(FashionJobsParseError, match="exactly two metadata fields"):
         parse_page(html, expected_url=STAGE_URL)
 
 
