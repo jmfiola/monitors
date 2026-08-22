@@ -291,8 +291,14 @@ class _FashionJobsPageParser(HTMLParser):
         } <= classes:
             self._start_capture("company")
         elif "muted-text" in classes:
+            if self._capture is not None:
+                raise FashionJobsParseError("FashionJobs card exposed a nested metadata field")
             self._start_capture("muted")
         elif "time-ago" in classes:
+            if tag in _VOID_TAGS:
+                raise FashionJobsParseError(
+                    "FashionJobs card used a void publication timestamp element"
+                )
             self._card.timestamp_count += 1
             self._timestamp_depth = self._depth
             if self._capture is not None and self._capture.kind == "muted":

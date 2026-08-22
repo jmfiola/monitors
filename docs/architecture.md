@@ -130,7 +130,8 @@ Parser completion means balanced HTML depth and no unfinished card, capture, or
 heading state. Each card must expose exactly two semantic metadata fields: contract
 and location. Exactly one timezone-aware absolute `time-ago[data-value]` is required.
 Only that element's localized descendant display text is ignored; empty or sibling
-semantic metadata still counts and fails the exact shape guard. Contract labels are
+semantic metadata still counts and fails the exact shape guard. Void timestamp
+elements and nested metadata wrappers fail immediately. Contract labels are
 limited to `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`:
 recognized non-Stage cards are deliberately excluded and logged, while an unknown
 label or metadata shape fails closed. Declared pagination is capped by
@@ -270,7 +271,7 @@ rather than polling forever with nowhere to report.
 ## Testing
 
 ```bash
-uv run pytest -q                                  # 418
+uv run pytest -q                                  # 420
 uv run mypy --strict lib apps tests tools
 uv run ruff check . && uv run ruff format --check .
 ./tools/parity-diff.sh                            # needs node + the sibling repos

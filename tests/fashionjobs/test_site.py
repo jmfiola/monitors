@@ -327,6 +327,32 @@ def test_empty_extra_muted_metadata_field_fails() -> None:
         parse_page(html, expected_url=STAGE_URL)
 
 
+def test_void_timestamp_element_fails() -> None:
+    timestamp = (
+        '<span class="time-ago" data-value="2026-08-21T21:50:27+02:00">\n'
+        "                  il y a une heure\n"
+        "                </span>"
+    )
+    void_timestamp = (
+        '<input class="time-ago" data-value="2026-08-21T21:50:27+02:00"><span>Unexpected</span>'
+    )
+    html = fixture("stage-page-1.html").replace(timestamp, void_timestamp, 1)
+
+    with pytest.raises(FashionJobsParseError, match="void publication timestamp"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_nested_muted_metadata_field_fails() -> None:
+    html = fixture("stage-page-1.html").replace(
+        "<span>Stage</span>",
+        '<div class="muted-text muted-text--no-bold muted-text--primary"></div><span>Stage</span>',
+        1,
+    )
+
+    with pytest.raises(FashionJobsParseError, match="nested metadata field"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
 def test_extra_muted_metadata_field_fails() -> None:
     extra_field = (
         '<div class="muted-text muted-text--no-bold muted-text--primary">'
