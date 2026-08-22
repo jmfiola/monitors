@@ -292,6 +292,41 @@ def test_empty_timestamp_display_text_is_valid() -> None:
     assert page.jobs[0].published_at == datetime.fromisoformat("2026-08-21T21:50:27+02:00")
 
 
+def test_duplicate_timestamp_fields_fail() -> None:
+    timestamp = (
+        '<span class="time-ago" data-value="2026-08-21T21:50:27+02:00">\n'
+        "                  il y a une heure\n"
+        "                </span>"
+    )
+    html = fixture("stage-page-1.html").replace(timestamp, timestamp + timestamp, 1)
+
+    with pytest.raises(FashionJobsParseError, match="exactly one publication timestamp"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_timestamp_wrapper_sibling_metadata_fails() -> None:
+    html = fixture("stage-page-1.html").replace(
+        "il y a une heure\n                </span>",
+        "il y a une heure\n                </span><span>Unexpected</span>",
+        1,
+    )
+
+    with pytest.raises(FashionJobsParseError, match="exactly two metadata fields"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_empty_extra_muted_metadata_field_fails() -> None:
+    empty_field = '<div class="muted-text muted-text--no-bold muted-text--primary"></div>'
+    html = fixture("stage-page-1.html").replace(
+        '<div class="muted-text muted-text--no-bold muted-text--light">',
+        empty_field + '<div class="muted-text muted-text--no-bold muted-text--light">',
+        1,
+    )
+
+    with pytest.raises(FashionJobsParseError, match="exactly two metadata fields"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
 def test_extra_muted_metadata_field_fails() -> None:
     extra_field = (
         '<div class="muted-text muted-text--no-bold muted-text--primary">'

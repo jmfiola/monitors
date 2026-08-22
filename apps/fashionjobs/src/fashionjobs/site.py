@@ -212,6 +212,15 @@ class _JobCard:
     company: str | None = None
     muted_values: list[str] = field(default_factory=list)
     published_at: datetime | None = None
+    timestamp_count: int = 0
+
+
+@dataclass
+class _Capture:
+    kind: str
+    depth: int
+    parts: list[str] = field(default_factory=list)
+    contains_timestamp: bool = False
 
 
 class _FashionJobsPageParser(HTMLParser):
@@ -234,7 +243,8 @@ class _FashionJobsPageParser(HTMLParser):
         self._body_closed = False
         self._card: _JobCard | None = None
         self._card_depth: int | None = None
-        self._capture: tuple[str, int, list[str]] | None = None
+        self._capture: _Capture | None = None
+        self._timestamp_depth: int | None = None
         self._depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -283,9 +293,10 @@ class _FashionJobsPageParser(HTMLParser):
         elif "muted-text" in classes:
             self._start_capture("muted")
         elif "time-ago" in classes:
-            if self._capture is not None and self._capture[0] == "muted":
-                _, capture_depth, _ = self._capture
-                self._capture = ("timestamp", capture_depth, [])
+            self._card.timestamp_count += 1
+            self._timestamp_depth = self._depth
+            if self._capture is not None and self._capture.kind == "muted":
+                self._capture.contains_timestamp = True
             value = attributes.get("data-value")
             if value is not None:
                 try:
@@ -311,13 +322,16 @@ class _FashionJobsPageParser(HTMLParser):
             self._stage_heading_seen = STAGE_LABEL in _normalize(" ".join(parts))
             self._stage_heading = None
 
-        if self._capture is not None and self._capture[1] == self._depth:
-            kind, _, parts = self._capture
-            value = _normalize(" ".join(parts))
-            if self._card is not None and value:
-                if kind == "company":
+        if self._timestamp_depth == self._depth:
+            self._timestamp_depth = None
+
+        if self._capture is not None and self._capture.depth == self._depth:
+            capture = self._capture
+            value = _normalize(" ".join(capture.parts))
+            if self._card is not None:
+                if capture.kind == "company" and value:
                     self._card.company = value
-                elif kind == "muted":
+                elif capture.kind == "muted" and (not capture.contains_timestamp or value):
                     self._card.muted_values.append(value)
             self._capture = None
 
@@ -339,8 +353,8 @@ class _FashionJobsPageParser(HTMLParser):
         self._page_text.append(value)
         if self._stage_heading is not None:
             self._stage_heading[1].append(value)
-        if self._capture is not None:
-            self._capture[2].append(value)
+        if self._capture is not None and self._timestamp_depth is None:
+            self._capture.parts.append(value)
 
     def result(self) -> ParsedPage:
         if not all((self._html_started, self._html_closed, self._body_started, self._body_closed)):
@@ -351,6 +365,7 @@ class _FashionJobsPageParser(HTMLParser):
             self._card is not None
             or self._card_depth is not None
             or self._capture is not None
+            or self._timestamp_depth is not None
             or self._stage_heading is not None
         ):
             raise FashionJobsParseError("FashionJobs response had unfinished parser state")
@@ -416,7 +431,7 @@ class _FashionJobsPageParser(HTMLParser):
 
     def _start_capture(self, kind: str) -> None:
         if self._capture is None:
-            self._capture = (kind, self._depth, [])
+            self._capture = _Capture(kind=kind, depth=self._depth)
 
     @staticmethod
     def _build_job(card: _JobCard, position: int) -> FashionJob:
@@ -433,6 +448,10 @@ class _FashionJobsPageParser(HTMLParser):
         if card.published_at.tzinfo is None or card.published_at.utcoffset() is None:
             raise FashionJobsParseError(
                 f"FashionJobs card {position} has a timezone-naive publication timestamp"
+            )
+        if card.timestamp_count != 1:
+            raise FashionJobsParseError(
+                f"FashionJobs card {position} must expose exactly one publication timestamp"
             )
         if len(card.muted_values) != 2:
             raise FashionJobsParseError(
