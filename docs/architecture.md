@@ -126,6 +126,11 @@ and on-origin URL. A malformed card, response, next link, or required page fails
 whole read; it cannot become a successful empty poll or partially advance identity
 state.
 
+Only titled links that already validate as canonical `/emploi/` or `/redir/` job
+routes may set the title and stable ID. Known `/fr/recrutement/` links remain company
+links even when titled, and conflicting supported job links fail the card rather than
+letting document order choose an identity.
+
 Parser completion means balanced HTML depth and no unfinished card, capture, or
 heading state. Each card must expose exactly two semantic metadata fields: contract
 and location. Exactly one timezone-aware absolute `time-ago[data-value]` is required.
@@ -271,7 +276,7 @@ rather than polling forever with nowhere to report.
 ## Testing
 
 ```bash
-uv run pytest -q                                  # 420
+uv run pytest -q                                  # 422
 uv run mypy --strict lib apps tests tools
 uv run ruff check . && uv run ruff format --check .
 ./tools/parity-diff.sh                            # needs node + the sibling repos

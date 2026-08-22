@@ -242,6 +242,10 @@ page merely for being non-Stage. An unknown label or metadata shape fails closed
 the page declares positive Stage results but every recognized card is non-Stage, the
 complete filter leak still fails rather than looking empty.
 
+Only validated `/emploi/` and `/redir/` titled links may supply a job identity.
+Titled `/fr/recrutement/` links are company links, not jobs; any other invalid titled
+route or conflicting pair of supported job links fails the card.
+
 - `test_stage_route_is_fixed_and_has_no_keyword_or_location_query`
 - `test_truncated_document_fails_after_a_complete_card`
 - `test_missing_interior_closing_tag_fails`
@@ -254,6 +258,8 @@ complete filter leak still fails rather than looking empty.
 - `test_void_timestamp_element_fails`
 - `test_nested_muted_metadata_field_fails`
 - `test_extra_muted_metadata_field_fails`
+- `test_titled_company_link_does_not_overwrite_job_url`
+- `test_conflicting_supported_job_links_fail`
 - `test_unknown_contract_label_fails`
 - `test_excludes_a_recognized_non_stage_contract`
 - `test_a_complete_contract_filter_leak_fails_instead_of_looking_empty`

@@ -219,7 +219,9 @@ location), optional localized timestamp display text, exactly one absolute
 `time-ago[data-value]`, `rel=next`, and `rel=end`. Decode entities through
 `HTMLParser(convert_charrefs=True)`, normalize runs of whitespace, parse timestamps
 with `datetime.fromisoformat`, and extract IDs from either `,ID.html` or
-`/redir/ID,variant.html`.
+`/redir/ID,variant.html`. Only validated job routes may set title and identity;
+titled `/fr/recrutement/` links remain company links, and conflicting supported job
+links fail the card.
 
 - [ ] **Step 5: Run the focused tests and verify GREEN**
 

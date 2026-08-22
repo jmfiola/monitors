@@ -20,6 +20,7 @@ _STAGE_PAGE_URL = re.compile(
 )
 _DIRECT_JOB_PATH = re.compile(r"^/emploi/(.+),([1-9]\d*)\.html$")
 _REDIRECT_JOB_PATH = re.compile(r"^/redir/([1-9]\d*),([1-9]\d*)\.html$")
+_COMPANY_PATH = re.compile(r"^/fr/recrutement/.+\.html$")
 _CONTRACT_LABELS = frozenset({"Stage", "CDI", "CDD", "Alternance", "Intérim", "Free-lance"})
 _VOID_TAGS = frozenset(
     {
@@ -205,6 +206,37 @@ def _job_core(job: FashionJob) -> tuple[int, str, str, str, str, datetime]:
     )
 
 
+def _on_origin_path(url: str) -> str | None:
+    parsed_url = urlparse(url)
+    if (
+        parsed_url.scheme != "https"
+        or parsed_url.netloc != _FASHIONJOBS_ORIGIN
+        or parsed_url.params
+        or parsed_url.query
+        or parsed_url.fragment
+    ):
+        return None
+    return parsed_url.path
+
+
+def _job_id_from_url(url: str) -> int | None:
+    path = _on_origin_path(url)
+    if path is None:
+        return None
+    direct_match = _DIRECT_JOB_PATH.fullmatch(path)
+    if direct_match is not None:
+        return int(direct_match.group(2))
+    redirect_match = _REDIRECT_JOB_PATH.fullmatch(path)
+    if redirect_match is not None:
+        return int(redirect_match.group(1))
+    return None
+
+
+def _is_company_url(url: str) -> bool:
+    path = _on_origin_path(url)
+    return path is not None and _COMPANY_PATH.fullmatch(path) is not None
+
+
 @dataclass
 class _JobCard:
     title: str | None = None
@@ -282,9 +314,17 @@ class _FashionJobsPageParser(HTMLParser):
 
         url = attributes.get("href") or attributes.get("data-lien")
         title = attributes.get("title")
-        if url is not None and title is not None:
+        job_id = _job_id_from_url(url) if url is not None else None
+        if url is not None and title is not None and job_id is not None:
+            normalized_title = _normalize(title)
+            if self._card.url is not None and (
+                self._card.url != url or self._card.title != normalized_title
+            ):
+                raise FashionJobsParseError("FashionJobs card exposed conflicting job links")
             self._card.url = url
-            self._card.title = _normalize(title)
+            self._card.title = normalized_title
+        elif url is not None and title is not None and not _is_company_url(url):
+            raise FashionJobsParseError("FashionJobs card has an invalid job URL")
         elif ("extended-link" in classes and url is not None) or {
             "tw-font-secondary",
             "tw-uppercase",
@@ -475,22 +515,8 @@ class _FashionJobsPageParser(HTMLParser):
         if not location:
             raise FashionJobsParseError(f"FashionJobs card {position} missing location")
 
-        parsed_url = urlparse(card.url)
-        if (
-            parsed_url.scheme != "https"
-            or parsed_url.netloc != _FASHIONJOBS_ORIGIN
-            or parsed_url.params
-            or parsed_url.query
-            or parsed_url.fragment
-        ):
-            raise FashionJobsParseError(f"FashionJobs card {position} has an invalid job URL")
-        direct_match = _DIRECT_JOB_PATH.fullmatch(parsed_url.path)
-        redirect_match = _REDIRECT_JOB_PATH.fullmatch(parsed_url.path)
-        if direct_match is not None:
-            job_id = int(direct_match.group(2))
-        elif redirect_match is not None:
-            job_id = int(redirect_match.group(1))
-        else:
+        job_id = _job_id_from_url(card.url)
+        if job_id is None:
             raise FashionJobsParseError(f"FashionJobs card {position} has an invalid job URL")
         return FashionJob(
             job_id=job_id,
