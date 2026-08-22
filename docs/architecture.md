@@ -350,7 +350,8 @@ completed a 42-page baseline, persisted 1,242 unique identities, and sent no
 first-run alerts. `v2.1.6` keeps the fixed publication date while removing Discord's
 changing relative-time suffix and the redundant FashionJobs France footer. Its
 rollout retained the baseline, delivered one newly observed listing, and persisted
-1,243 unique identities.
+1,243 unique identities. Infrastructure declares pending `v2.1.7`, which omits the
+generic alert description while preserving every job-specific field.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).
