@@ -126,6 +126,7 @@ class FashionJobsSource:
         discovered_ids: set[int] = set()
         page = 1
         last_page: int | None = None
+        promoted_last_page: int | None = None
 
         while last_page is None or page <= last_page:
             requested_url = page_url(page)
@@ -139,9 +140,8 @@ class FashionJobsSource:
             elif parsed.last_page < last_page:
                 raise FashionJobsParseError("FashionJobs pagination end changed during traversal")
             elif parsed.last_page > last_page:
-                if parsed.next_url != page_url(page + 1):
-                    raise FashionJobsParseError("FashionJobs next pagination URL did not match")
                 last_page = parsed.last_page
+                promoted_last_page = last_page
 
             self._merge_candidate_jobs(candidate_records, parsed.jobs)
             page_ids = {job.job_id for job in parsed.jobs}
@@ -155,7 +155,11 @@ class FashionJobsSource:
 
             has_unseen_ids = bool(page_ids - frontier - discovered_ids)
             discovered_ids.update(page_ids)
-            if not full_scan and not has_unseen_ids:
+            if (
+                not full_scan
+                and not has_unseen_ids
+                and (promoted_last_page is None or page >= promoted_last_page)
+            ):
                 break
             page += 1
 

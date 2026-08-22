@@ -760,6 +760,43 @@ async def test_an_unseen_page_one_id_continues_until_an_all_known_page() -> None
     }
 
 
+async def test_frontier_read_crosses_the_highest_promoted_end_before_stopping() -> None:
+    requested: list[str] = []
+    steady_state = False
+    startup_bodies = {
+        STAGE_URL: PAGE1_TWO,
+        page_url(2): PAGE2_LAST,
+    }
+    promoted_bodies = {
+        STAGE_URL: PAGE1_TWO.replace("12000001", "12000004"),
+        page_url(2): with_end_page(page_with_promoted_end(2), 3),
+        page_url(3): with_end_page(page_with_promoted_end(3), 4),
+        page_url(4): fixture("stage-page-42-final.html").replace(page_url(42), page_url(4)),
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        bodies = promoted_bodies if steady_state else startup_bodies
+        return html_response(request, bodies[str(request.url)])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        await source.fetch()
+        requested.clear()
+        steady_state = True
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2), page_url(3), page_url(4)]
+    assert {item.job_id for item in items} == {
+        11999998,
+        11999999,
+        12000001,
+        12000002,
+        12000003,
+        12000004,
+    }
+
+
 async def test_same_read_duplicate_does_not_extend_frontier_traversal() -> None:
     requested: list[str] = []
     startup_bodies = three_page_bodies()

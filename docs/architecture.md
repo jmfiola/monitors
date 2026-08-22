@@ -139,8 +139,8 @@ semantic metadata still counts and fails the exact shape guard. Void timestamp
 elements and nested metadata wrappers fail immediately. Contract labels are
 limited to `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`:
 recognized non-Stage cards are deliberately excluded and logged, while an unknown
-label or metadata shape fails closed. Declared pagination is capped by
-`MAX_PAGES=100` before traversal begins.
+label or metadata shape fails closed. Every declared end, including a later
+promotion, is capped by `MAX_PAGES=100` before it extends traversal.
 
 FashionJobs can expose extra promoted cards on page 1: the first declared end may
 therefore be lower than a later end reached through the validated sequential next
