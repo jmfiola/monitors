@@ -50,6 +50,23 @@ def with_first_card_appearances(html: str, appearances: int) -> str:
     return html[:list_start] + (first_card * appearances) + html[list_end:]
 
 
+def with_end_page(html: str, page: int) -> str:
+    return html.replace("Stage,5,42.html", f"Stage,5,{page}.html").replace(
+        ">42</a>", f">{page}</a>"
+    )
+
+
+def three_page_bodies() -> dict[str, str]:
+    page_one = with_end_page(fixture("stage-page-1.html"), 3)
+    page_two = with_end_page(with_first_card_appearances(fixture("stage-page-2.html"), 1), 3)
+    page_three = (
+        page_two.replace(page_url(2), page_url(3), 1)
+        .replace(f'<a rel="next" href="{page_url(3)}">Suivant</a>', "", 1)
+        .replace("12000003", "11999998")
+    )
+    return {STAGE_URL: page_one, page_url(2): page_two, page_url(3): page_three}
+
+
 def test_stage_route_is_fixed_and_has_no_keyword_or_location_query() -> None:
     assert STAGE_URL == "https://fr.fashionjobs.com/fr/contrat/Stage,5.html"
     assert page_url(1) == STAGE_URL
@@ -133,6 +150,45 @@ def test_truncated_document_fails_after_a_complete_card() -> None:
         parse_page(truncated, expected_url=STAGE_URL)
 
 
+@pytest.mark.parametrize(
+    ("closing_fragment", "replacement"),
+    [
+        ("        </div>\n      </li>", "      </li>"),
+        ("    </ul>", ""),
+    ],
+)
+def test_missing_interior_closing_tag_fails(closing_fragment: str, replacement: str) -> None:
+    html = fixture("stage-page-1.html").replace(closing_fragment, replacement, 1)
+
+    with pytest.raises(FashionJobsParseError, match="unfinished HTML structure"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_extra_closing_tag_fails_with_negative_depth() -> None:
+    html = fixture("stage-page-1.html") + "</section>"
+
+    with pytest.raises(FashionJobsParseError, match="unfinished HTML structure"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "</section><h1>",
+        '</section><div class="job-card job-card__wrapper--col">',
+        (
+            '</section></section><div class="job-card job-card__wrapper--col">'
+            '<div class="muted-text">'
+        ),
+    ],
+)
+def test_balanced_depth_with_unfinished_parser_state_fails(suffix: str) -> None:
+    html = fixture("stage-page-1.html") + suffix
+
+    with pytest.raises(FashionJobsParseError, match="unfinished parser state"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
 def test_positive_stage_count_without_finalized_jobs_raises() -> None:
     html = fixture("stage-page-1.html").replace(
         "job-card job-card__wrapper job-card__wrapper--col", "not-a-job-card"
@@ -169,6 +225,19 @@ def test_page_one_with_every_result_rejects_later_pagination() -> None:
     html = fixture("stage-page-1.html").replace("Stage (1266)", "Stage (3)")
 
     with pytest.raises(FashionJobsParseError, match=r"page 1.*all declared results"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_declared_end_at_page_limit_is_valid() -> None:
+    page = parse_page(with_end_page(fixture("stage-page-1.html"), 100), expected_url=STAGE_URL)
+
+    assert page.last_page == 100
+
+
+def test_declared_end_above_page_limit_fails() -> None:
+    html = with_end_page(fixture("stage-page-1.html"), 101)
+
+    with pytest.raises(FashionJobsParseError, match="page safety limit"):
         parse_page(html, expected_url=STAGE_URL)
 
 
@@ -224,13 +293,38 @@ def test_missing_third_muted_value_raises() -> None:
         parse_page(html, expected_url=STAGE_URL)
 
 
-def test_excludes_a_valid_non_stage_contract() -> None:
-    html = fixture("stage-page-1.html").replace("<span>Stage</span>", "<span>CDD</span>", 1)
+def test_extra_muted_metadata_field_fails() -> None:
+    extra_field = (
+        '<div class="muted-text muted-text--no-bold muted-text--primary">'
+        "<span>Unexpected</span></div>"
+    )
+    html = fixture("stage-page-1.html").replace(
+        '<div class="muted-text muted-text--no-bold muted-text--light">',
+        extra_field + '<div class="muted-text muted-text--no-bold muted-text--light">',
+        1,
+    )
+
+    with pytest.raises(FashionJobsParseError, match="exactly three metadata fields"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+def test_unknown_contract_label_fails() -> None:
+    html = fixture("stage-page-1.html").replace(
+        "<span>Stage</span>", "<span>Stage premium</span>", 1
+    )
+
+    with pytest.raises(FashionJobsParseError, match="unknown contract"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
+@pytest.mark.parametrize("contract", ["CDI", "CDD", "Alternance", "Intérim", "Free-lance"])
+def test_excludes_a_recognized_non_stage_contract(contract: str) -> None:
+    html = fixture("stage-page-1.html").replace("<span>Stage</span>", f"<span>{contract}</span>", 1)
 
     page = parse_page(html, expected_url=STAGE_URL)
 
     assert [job.job_id for job in page.jobs] == [12000002, 12000003]
-    assert page.excluded_contracts == ("CDD",)
+    assert page.excluded_contracts == (contract,)
 
 
 def test_a_complete_contract_filter_leak_fails_instead_of_looking_empty() -> None:
@@ -311,20 +405,28 @@ def test_nonzero_stage_count_without_cards_fails() -> None:
         parse_page(html, expected_url=STAGE_URL)
 
 
-async def test_missing_state_fetches_every_declared_page() -> None:
+@pytest.mark.parametrize("initial_keys", [None, set()], ids=["missing", "empty"])
+async def test_missing_and_empty_state_cross_duplicate_only_pages(
+    initial_keys: set[str] | None,
+) -> None:
     requested: list[str] = []
+    bodies = three_page_bodies()
 
     def handler(request: httpx.Request) -> httpx.Response:
         requested.append(str(request.url))
-        body = PAGE1_TWO if str(request.url) == STAGE_URL else PAGE2_LAST
-        return html_response(request, body)
+        return html_response(request, bodies[str(request.url)])
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        source = FashionJobsSource(
+            client,
+            initial_keys=initial_keys,
+            log=lambda _message: None,
+            clock=lambda: 0.0,
+        )
         items = await source.fetch()
 
-    assert requested == [STAGE_URL, page_url(2)]
-    assert {item.job_id for item in items} == {11999999, 12000001, 12000002, 12000003}
+    assert requested == [STAGE_URL, page_url(2), page_url(3)]
+    assert {item.job_id for item in items} == {11999998, 12000001, 12000002, 12000003}
 
 
 async def test_seeded_frontier_stops_after_an_all_known_page() -> None:
@@ -344,6 +446,105 @@ async def test_seeded_frontier_stops_after_an_all_known_page() -> None:
 
     assert requested == [STAGE_URL]
     assert {item.job_id for item in items} == {12000001, 12000002, 12000003}
+
+
+async def test_seeded_frontier_still_stops_before_daily_full_scan_is_due() -> None:
+    requested: list[str] = []
+    now = 0.0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return html_response(request, PAGE1_TWO)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(
+            client,
+            initial_keys={"12000001", "12000002", "12000003"},
+            log=lambda _message: None,
+            clock=lambda: now,
+        )
+        now = 86_399.0
+        await source.fetch()
+
+    assert requested == [STAGE_URL]
+
+
+async def test_due_daily_scan_crosses_duplicates_to_find_a_later_new_id() -> None:
+    requested: list[str] = []
+    bodies = three_page_bodies()
+    now = 0.0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return html_response(request, bodies[str(request.url)])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(
+            client,
+            initial_keys={"12000001", "12000002", "12000003"},
+            log=lambda _message: None,
+            clock=lambda: now,
+        )
+        now = 86_400.0
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2), page_url(3)]
+    assert {item.job_id for item in items} == {11999998, 12000001, 12000002, 12000003}
+
+
+async def test_failed_due_daily_scan_remains_due() -> None:
+    requested: list[str] = []
+    bodies = three_page_bodies()
+    now = 0.0
+    fail_page_two = True
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal fail_page_two
+        requested.append(str(request.url))
+        if str(request.url) == page_url(2) and fail_page_two:
+            fail_page_two = False
+            return httpx.Response(503, request=request)
+        return html_response(request, bodies[str(request.url)])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(
+            client,
+            initial_keys={"12000001", "12000002", "12000003"},
+            log=lambda _message: None,
+            clock=lambda: now,
+        )
+        now = 86_400.0
+        with pytest.raises(FashionJobsHTTPError):
+            await source.fetch()
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2), STAGE_URL, page_url(2), page_url(3)]
+    assert {item.job_id for item in items} == {11999998, 12000001, 12000002, 12000003}
+
+
+async def test_successful_due_daily_scan_resets_the_deadline() -> None:
+    requested: list[str] = []
+    bodies = three_page_bodies()
+    now = 0.0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return html_response(request, bodies[str(request.url)])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(
+            client,
+            initial_keys={"12000001", "12000002", "12000003"},
+            log=lambda _message: None,
+            clock=lambda: now,
+        )
+        now = 86_400.0
+        await source.fetch()
+        requested.clear()
+        now = 172_799.0
+        await source.fetch()
+
+    assert requested == [STAGE_URL]
 
 
 async def test_an_unseen_page_one_id_continues_until_an_all_known_page() -> None:
@@ -418,22 +619,6 @@ async def test_reordered_or_removed_cards_do_not_shrink_returned_ids() -> None:
     assert [item.job_id for item in second] == expected
 
 
-async def test_empty_baseline_walks_while_pages_introduce_ids() -> None:
-    requested: list[str] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requested.append(str(request.url))
-        body = PAGE1_TWO if str(request.url) == STAGE_URL else PAGE2_LAST
-        return html_response(request, body)
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        source = FashionJobsSource(client, initial_keys=set(), log=lambda _message: None)
-        items = await source.fetch()
-
-    assert requested == [STAGE_URL, page_url(2)]
-    assert {item.job_id for item in items} == {11999999, 12000001, 12000002, 12000003}
-
-
 async def test_full_record_is_retained_when_it_disappears_from_the_site() -> None:
     calls = 0
 
@@ -459,14 +644,14 @@ async def test_full_record_is_retained_when_it_disappears_from_the_site() -> Non
 
 
 async def test_duplicate_ids_keep_the_direct_emploi_url() -> None:
-    page2_with_redirect_duplicate = PAGE2_LAST.replace(
+    page1_with_redirect_duplicate = PAGE1_TWO.replace(
         "https://fr.fashionjobs.com/emploi/atelier-exemple/Stage-assistant-communication,12000003.html",
         "https://fr.fashionjobs.com/redir/12000003,1.html",
         1,
     )
 
     def handler(request: httpx.Request) -> httpx.Response:
-        body = PAGE1_TWO if str(request.url) == STAGE_URL else page2_with_redirect_duplicate
+        body = page1_with_redirect_duplicate if str(request.url) == STAGE_URL else PAGE2_LAST
         return html_response(request, body)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -547,8 +732,26 @@ async def test_non_html_response_raises_an_error() -> None:
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
-        with pytest.raises(FashionJobsError, match="HTML"):
+        with pytest.raises(FashionJobsError, match="HTML content type") as caught:
             await source.fetch()
+
+    assert type(caught.value) is FashionJobsError
+
+
+async def test_page_limit_fails_before_a_second_request() -> None:
+    requested: list[str] = []
+    oversized = with_end_page(fixture("stage-page-1.html"), 101)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return html_response(request, oversized)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        with pytest.raises(FashionJobsParseError, match="page safety limit"):
+            await source.fetch()
+
+    assert requested == [STAGE_URL]
 
 
 @pytest.mark.parametrize(

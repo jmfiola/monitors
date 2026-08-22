@@ -3,6 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from html.parser import HTMLParser
+from time import monotonic
 from urllib.parse import urlparse
 
 import httpx
@@ -11,12 +12,15 @@ from fashionjobs.types import FashionItem, FashionJob, KnownJob
 
 STAGE_LABEL = "Stage"
 STAGE_URL = "https://fr.fashionjobs.com/fr/contrat/Stage,5.html"
+MAX_PAGES = 100
+_FULL_SCAN_INTERVAL_SECONDS = 86_400
 _FASHIONJOBS_ORIGIN = "fr.fashionjobs.com"
 _STAGE_PAGE_URL = re.compile(
     r"^https://fr\.fashionjobs\.com/fr/contrat/Stage,5(?:,([1-9]\d*))?\.html$"
 )
 _DIRECT_JOB_PATH = re.compile(r"^/emploi/(.+),([1-9]\d*)\.html$")
 _REDIRECT_JOB_PATH = re.compile(r"^/redir/([1-9]\d*),([1-9]\d*)\.html$")
+_CONTRACT_LABELS = frozenset({"Stage", "CDI", "CDD", "Alternance", "Intérim", "Free-lance"})
 _VOID_TAGS = frozenset(
     {
         "area",
@@ -90,17 +94,24 @@ class FashionJobsSource:
         *,
         initial_keys: set[str] | None,
         log: Callable[[str], None],
+        clock: Callable[[], float] = monotonic,
     ) -> None:
         self._client = client
         self._log = log
+        self._clock = clock
         self._known_ids = {int(key) for key in initial_keys or set()}
         self._records: dict[int, FashionJob] = {}
-        self._force_full_scan = initial_keys is None
+        self._force_full_scan = not initial_keys
+        self._last_full_scan_at = None if self._force_full_scan else self._clock()
 
     async def fetch(self) -> list[FashionItem]:
-        return await self._fetch_transaction()
+        now = self._clock()
+        full_scan = self._force_full_scan
+        if self._last_full_scan_at is not None:
+            full_scan = full_scan or now - self._last_full_scan_at >= _FULL_SCAN_INTERVAL_SECONDS
+        return await self._fetch_transaction(full_scan=full_scan)
 
-    async def _fetch_transaction(self) -> list[FashionItem]:
+    async def _fetch_transaction(self, *, full_scan: bool) -> list[FashionItem]:
         candidate_records: dict[int, FashionJob] = {}
         candidate_ids: set[int] = set()
         excluded_contracts: list[str] = []
@@ -134,16 +145,19 @@ class FashionJobsSource:
 
             has_unseen_ids = bool(page_ids - frontier - discovered_ids)
             discovered_ids.update(page_ids)
-            if not self._force_full_scan and not has_unseen_ids:
+            if not full_scan and not has_unseen_ids:
                 break
             page += 1
 
-        self._force_full_scan = False
         self._known_ids.update(candidate_ids)
         self._records.update(candidate_records)
         for contract in excluded_contracts:
             self._log(f"FashionJobs excluded non-Stage contract: {contract}")
-        return self._items()
+        items = self._items()
+        if full_scan:
+            self._force_full_scan = False
+            self._last_full_scan_at = self._clock()
+        return items
 
     async def _request_page(self, page: int) -> ParsedPage:
         requested_url = page_url(page)
@@ -328,6 +342,15 @@ class _FashionJobsPageParser(HTMLParser):
     def result(self) -> ParsedPage:
         if not all((self._html_started, self._html_closed, self._body_started, self._body_closed)):
             raise FashionJobsParseError("FashionJobs response was not a complete HTML document")
+        if self._depth != 0:
+            raise FashionJobsParseError("FashionJobs response had unfinished HTML structure")
+        if (
+            self._card is not None
+            or self._card_depth is not None
+            or self._capture is not None
+            or self._stage_heading is not None
+        ):
+            raise FashionJobsParseError("FashionJobs response had unfinished parser state")
         page_match = _STAGE_PAGE_URL.fullmatch(self._expected_url)
         if page_match is None:
             raise FashionJobsParseError("FashionJobs requested URL did not match the Stage route")
@@ -350,6 +373,8 @@ class _FashionJobsPageParser(HTMLParser):
         end_url = self._pagination_url(self._end_url, "end")
         end_match = _STAGE_PAGE_URL.fullmatch(end_url) if end_url is not None else None
         last_page = int(end_match.group(1)) if end_match is not None and end_match.group(1) else 1
+        if last_page > MAX_PAGES:
+            raise FashionJobsParseError("FashionJobs declared end exceeded the page safety limit")
         current_page = int(page_match.group(1)) if page_match.group(1) else 1
         unique_job_count = len({job.job_id for job in self._jobs})
 
@@ -406,13 +431,18 @@ class _FashionJobsPageParser(HTMLParser):
             raise FashionJobsParseError(
                 f"FashionJobs card {position} has a timezone-naive publication timestamp"
             )
-        if len(card.muted_values) < 3:
+        if len(card.muted_values) != 3:
             raise FashionJobsParseError(
-                f"FashionJobs card {position} missing required field: publication metadata"
+                f"FashionJobs card {position} missing required field: "
+                "expected exactly three metadata fields"
             )
         contract = card.muted_values[0]
         if not contract:
             raise FashionJobsParseError(f"FashionJobs card {position} missing contract")
+        if contract not in _CONTRACT_LABELS:
+            raise FashionJobsParseError(
+                f"FashionJobs card {position} has an unknown contract label"
+            )
         location = card.muted_values[1]
         if not location:
             raise FashionJobsParseError(f"FashionJobs card {position} missing location")
