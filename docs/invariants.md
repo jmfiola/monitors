@@ -363,15 +363,15 @@ IDs and every later unattempted ID are unsettled and withheld for the next tick.
 `apps/fashionjobs/src/fashionjobs/alert.py`
 
 Each listing gets one embed with title and URL plus `Company`, optional non-empty
-`Location`, `Contract`, and `Published` fields. Publication time uses Discord's fixed
-absolute style and never its changing relative style. The embed omits a generic
-description and the redundant FashionJobs France footer. Source Markdown is escaped
-within Discord limits, and the payload always sends
+`Location`, then `Contract`. The source timestamp remains an ordering signal but is
+not rendered because it does not reliably represent the employer's original posting
+date. The embed also omits a generic description and the redundant FashionJobs France
+footer. Source Markdown is escaped within Discord limits, and the payload always sends
 `allowed_mentions: {"parse": []}`. Removing that pairing turns an upstream title
 such as `@everyone` into a channel-wide ping.
 
 - `test_alert_contains_every_reliable_job_field`
-- `test_alert_publication_time_is_fixed_not_relative`
+- `test_alert_omits_the_ambiguous_fashionjobs_timestamp`
 - `test_alert_omits_redundant_fashionjobs_france_footer`
 - `test_source_markdown_is_escaped_and_everyone_is_disabled`
 - `test_escaped_title_and_fields_respect_discord_limits_without_dangling_escape`
