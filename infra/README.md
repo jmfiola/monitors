@@ -151,27 +151,23 @@ done
 
 ### FashionJobs rollout status
 
-Nothing in the FashionJobs feature work was deployed, applied, pushed as an image,
-or restarted. Current production remains `v2.0.2`; `v2.1.0` is the desired release
-tag in `apps.auto.tfvars`, not the image currently running. Before a later,
-separately authorized deployment, an operator still must:
-
-1. supply `fashionjobs_discord_webhook_url` in the gitignored `terraform.tfvars`;
-2. build and push the `linux/amd64` FashionJobs image tagged `v2.1.0`; and
-3. run the normal authorized deployment workflow.
+The first FashionJobs `v2.1.0` rollout proved the production GCE egress path and
+Discord webhook, then failed closed because the live page omitted optional localized
+timestamp display text while retaining the required absolute `data-value`. The
+published `v2.1.0` image remains immutable; `v2.1.1` is the focused parser hotfix and
+the current tag in `apps.auto.tfvars`.
 
 From the repository root, the FashionJobs image step is:
 
 ```bash
-IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.0"
+IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.1"
 docker build --platform linux/amd64 --build-arg APP=fashionjobs -t "$IMAGE" .
 docker push "$IMAGE"
 ```
 
-Whether FashionJobs accepts the production GCE egress IP remains unresolved. This
-work did not test it. Operational setup still needs one bounded container-side smoke
-request before deployment; a block requires a new source decision, not a browser or
-fingerprint-bypass dependency in the shared library.
+The verified request profile is the app's configured `Accept: text/html` and
+`User-Agent: fashionjobs-monitor/2.0`; an unrepresentative default-httpx probe was
+rejected with HTTP 403 before the exact production profile returned HTTP 200.
 
 If a build hangs with no output at all, the credential helper is stuck rather than the
 build being slow: every registry operation that consults credentials blocks, including

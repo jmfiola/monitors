@@ -231,7 +231,11 @@ filter. The parser also requires the canonical route and checked structured cont
 filter ID `5`; a URL that merely looks plausible is not enough.
 
 Parser completion requires balanced HTML depth and finalized card, capture, and
-heading state. Each card has exactly three metadata fields. The known contract
+heading state. Each card has exactly two semantic metadata fields, contract and
+location, and exactly one timezone-aware absolute `time-ago[data-value]`. Only the
+timestamp element's localized descendant display text may be empty and is ignored;
+empty or sibling semantic metadata remains visible to the exact shape guard. Void
+timestamp elements and nested metadata wrappers fail immediately. The known contract
 whitelist is `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`.
 Recognized non-Stage cards are deliberately excluded and logged; they do not fail the
 page merely for being non-Stage. An unknown label or metadata shape fails closed. If
@@ -243,6 +247,12 @@ complete filter leak still fails rather than looking empty.
 - `test_missing_interior_closing_tag_fails`
 - `test_extra_closing_tag_fails_with_negative_depth`
 - `test_balanced_depth_with_unfinished_parser_state_fails`
+- `test_empty_timestamp_display_text_is_valid`
+- `test_duplicate_timestamp_fields_fail`
+- `test_timestamp_wrapper_sibling_metadata_fails`
+- `test_empty_extra_muted_metadata_field_fails`
+- `test_void_timestamp_element_fails`
+- `test_nested_muted_metadata_field_fails`
 - `test_extra_muted_metadata_field_fails`
 - `test_unknown_contract_label_fails`
 - `test_excludes_a_recognized_non_stage_contract`

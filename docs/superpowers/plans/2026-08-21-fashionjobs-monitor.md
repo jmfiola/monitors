@@ -214,7 +214,8 @@ def parse_page(html: str, *, expected_url: str) -> ParsedPage:
 
 The private parser must collect the canonical link, checked `contrats[]=5` marker,
 Stage count, job-card boundaries, title URL from either `href` or `data-lien`, title,
-company in either observed markup form, the three muted values, absolute
+company in either observed markup form, the two semantic muted values (contract and
+location), optional localized timestamp display text, exactly one absolute
 `time-ago[data-value]`, `rel=next`, and `rel=end`. Decode entities through
 `HTMLParser(convert_charrefs=True)`, normalize runs of whitespace, parse timestamps
 with `datetime.fromisoformat`, and extract IDs from either `,ID.html` or

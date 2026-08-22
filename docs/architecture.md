@@ -127,8 +127,12 @@ whole read; it cannot become a successful empty poll or partially advance identi
 state.
 
 Parser completion means balanced HTML depth and no unfinished card, capture, or
-heading state. Each card must expose exactly three metadata fields. Contract labels
-are limited to `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`:
+heading state. Each card must expose exactly two semantic metadata fields: contract
+and location. Exactly one timezone-aware absolute `time-ago[data-value]` is required.
+Only that element's localized descendant display text is ignored; empty or sibling
+semantic metadata still counts and fails the exact shape guard. Void timestamp
+elements and nested metadata wrappers fail immediately. Contract labels are
+limited to `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`:
 recognized non-Stage cards are deliberately excluded and logged, while an unknown
 label or metadata shape fails closed. Declared pagination is capped by
 `MAX_PAGES=100` before traversal begins.
@@ -267,7 +271,7 @@ rather than polling forever with nowhere to report.
 ## Testing
 
 ```bash
-uv run pytest -q                                  # 415
+uv run pytest -q                                  # 420
 uv run mypy --strict lib apps tests tools
 uv run ruff check . && uv run ruff format --check .
 ./tools/parity-diff.sh                            # needs node + the sibling repos
@@ -308,12 +312,11 @@ leaving capacity for the OS, Docker, logging, and normal bursts. Between its
 ten-minute polls it adds only an idle Python process and small HTTP/HTML identity
 state; there is no browser, database, inbound listener, or worker.
 
-Production remains on `v2.0.2`; the infrastructure declares FashionJobs `v2.1.0` as
-desired setup, not current production. Nothing from this feature was deployed,
-applied, pushed as an image, or restarted. A webhook and a built and pushed `v2.1.0`
-image are still required before a separately authorized deployment. Whether
-FashionJobs accepts the GCE egress IP remains an unresolved deployment-time
-container smoke check; it was not tested by this work.
+Melanzana and Jeffco remain on `v2.0.2`. The first FashionJobs `v2.1.0` rollout
+proved GCE egress and Discord delivery but exposed that the localized timestamp
+display text can be empty even though the absolute `data-value` is present. The
+failed image remains immutable; infrastructure declares the focused `v2.1.1`
+hotfix instead of overwriting it.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).

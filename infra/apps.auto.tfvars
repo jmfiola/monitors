@@ -22,7 +22,7 @@ apps = {
 
   fashionjobs = {
     image     = "fashionjobs-monitor"
-    image_tag = "v2.1.0"
+    image_tag = "v2.1.1"
     memory    = "128m"
   }
 }
