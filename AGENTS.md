@@ -23,8 +23,7 @@ Use the root `justfile` as the command interface:
 - `just infra-verify` checks the live host without changing it.
 - `just logs <app> [gcloud args...]` reads one app's production logs.
 
-If `just` is unavailable, inspect the `justfile` and run its underlying command. Do
-not install system-wide tooling without permission.
+If `just` is unavailable, feel free to install it.
 
 ## Development and testing
 
