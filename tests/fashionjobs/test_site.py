@@ -81,6 +81,34 @@ def page_with_promoted_end(page: int) -> str:
     )
 
 
+async def assert_pagination_failure_discards_transaction(
+    bodies: dict[str, str],
+    *,
+    error: str,
+) -> None:
+    requested: list[str] = []
+    failure = True
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        body = bodies[str(request.url)] if failure else fixture("empty-stage-page.html")
+        return html_response(request, body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        with pytest.raises(FashionJobsParseError, match=error):
+            await source.fetch()
+        assert source._known_ids == set()
+        assert source._records == {}
+        assert source._force_full_scan
+        assert source._last_full_scan_at is None
+        failure = False
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2), STAGE_URL]
+    assert items == []
+
+
 def test_stage_route_is_fixed_and_has_no_keyword_or_location_query() -> None:
     assert STAGE_URL == "https://fr.fashionjobs.com/fr/contrat/Stage,5.html"
     assert page_url(1) == STAGE_URL
@@ -1010,6 +1038,71 @@ async def test_learned_final_page_with_next_url_fails_before_an_extra_request() 
             await source.fetch()
 
     assert requested == [STAGE_URL, page_url(2)]
+
+
+async def test_learned_final_page_with_next_without_href_discards_transaction() -> None:
+    final_page_without_next_href = (
+        fixture("stage-page-42-final.html")
+        .replace(
+            page_url(42),
+            page_url(2),
+        )
+        .replace("</body>", '<a rel="next">Suivant</a></body>')
+    )
+
+    await assert_pagination_failure_discards_transaction(
+        {
+            STAGE_URL: PAGE1_TWO,
+            page_url(2): final_page_without_next_href,
+        },
+        error="next pagination URL is missing",
+    )
+
+
+async def test_duplicate_next_pagination_declarations_discard_transaction() -> None:
+    duplicate_next_page = with_end_page(fixture("stage-page-2.html"), 3).replace(
+        f'<a rel="next" href="{page_url(3)}">Suivant</a>',
+        (
+            '<a rel="next" href="https://example.com/Stage,5,3.html">Mauvais</a>'
+            f'<a rel="next" href="{page_url(3)}">Suivant</a>'
+        ),
+    )
+
+    await assert_pagination_failure_discards_transaction(
+        {
+            STAGE_URL: PAGE1_TWO,
+            page_url(2): duplicate_next_page,
+            page_url(3): fixture("stage-page-42-final.html").replace(page_url(42), page_url(3)),
+        },
+        error="duplicate next pagination",
+    )
+
+
+async def test_duplicate_end_pagination_declarations_discard_transaction() -> None:
+    duplicate_end_page = PAGE2_LAST.replace(
+        f'<a rel="end" href="{page_url(2)}">42</a>',
+        (f'<a rel="end" href="{STAGE_URL}">1</a><a rel="end" href="{page_url(2)}">42</a>'),
+    )
+
+    await assert_pagination_failure_discards_transaction(
+        {
+            STAGE_URL: PAGE1_TWO,
+            page_url(2): duplicate_end_page,
+        },
+        error="duplicate end pagination",
+    )
+
+
+async def test_zero_result_learned_final_page_discards_transaction() -> None:
+    empty_final_page = fixture("empty-stage-page.html").replace(STAGE_URL, page_url(2))
+
+    await assert_pagination_failure_discards_transaction(
+        {
+            STAGE_URL: PAGE1_TWO,
+            page_url(2): empty_final_page,
+        },
+        error="end changed",
+    )
 
 
 @pytest.mark.parametrize(
