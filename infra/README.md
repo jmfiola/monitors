@@ -153,14 +153,15 @@ done
 
 The first FashionJobs `v2.1.0` rollout proved the production GCE egress path and
 Discord webhook, then failed closed because the live page omitted optional localized
-timestamp display text while retaining the required absolute `data-value`. The
-published `v2.1.0` image remains immutable; `v2.1.1` is the focused parser hotfix and
-the current tag in `apps.auto.tfvars`.
+timestamp display text while retaining the required absolute `data-value`. A
+one-page `v2.1.1` smoke then failed closed because titled recruitment links surround
+and otherwise overwrite the real job link. Both published images remain immutable;
+`v2.1.2` contains the focused fixes and is the current tag in `apps.auto.tfvars`.
 
 From the repository root, the FashionJobs image step is:
 
 ```bash
-IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.1"
+IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.2"
 docker build --platform linux/amd64 --build-arg APP=fashionjobs -t "$IMAGE" .
 docker push "$IMAGE"
 ```

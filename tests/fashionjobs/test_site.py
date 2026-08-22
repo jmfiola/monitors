@@ -91,6 +91,35 @@ def test_extracts_ordinary_and_promoted_stage_cards() -> None:
     assert page.last_page == 42
 
 
+def test_titled_company_link_does_not_overwrite_job_url() -> None:
+    html = fixture("stage-page-1.html").replace(
+        'data-lien="https://fr.fashionjobs.com/fr/recrutement/maison-exemple.html"',
+        'data-lien="https://fr.fashionjobs.com/fr/recrutement/maison-exemple.html" '
+        'title="MAISON EXEMPLE"',
+        1,
+    )
+
+    page = parse_page(html, expected_url=STAGE_URL)
+
+    assert page.jobs[0].title == "Stage Assistant Produit"
+    assert page.jobs[0].url.endswith("/Stage-assistant-produit,12000001.html")
+
+
+def test_conflicting_supported_job_links_fail() -> None:
+    second_link = (
+        '<a href="https://fr.fashionjobs.com/emploi/autre/Stage-autre,12009999.html" '
+        'title="Stage Autre"></a>'
+    )
+    html = fixture("stage-page-1.html").replace(
+        '</a>\n            <div class="tw-font-secondary tw-uppercase">',
+        f'</a>{second_link}\n            <div class="tw-font-secondary tw-uppercase">',
+        1,
+    )
+
+    with pytest.raises(FashionJobsParseError, match="conflicting job links"):
+        parse_page(html, expected_url=STAGE_URL)
+
+
 @pytest.mark.parametrize(
     "invalid_url",
     [
