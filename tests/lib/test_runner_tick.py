@@ -221,7 +221,9 @@ async def test_a_permanent_rejection_banks_the_keys_and_posts_an_ops_alert() -> 
     )
     assert keys == {"a"}  # banked, NOT withheld
     assert len(status.posts) == 1
-    assert "HTTP 400" in status.posts[0].embeds[0].description
+    description = status.posts[0].embeds[0].description
+    assert description is not None
+    assert "HTTP 400" in description
     assert any("permanently rejected" in line for line in logged)
 
 

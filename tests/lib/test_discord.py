@@ -143,6 +143,7 @@ def test_a_delivery_failure_alert_says_the_items_were_abandoned_and_never_pings(
     assert payload.content is None
     assert payload.allowed_mentions_parse is None
     embed = payload.embeds[0]
+    assert embed.description is not None
     assert "HTTP 400" in embed.description
     assert "3 slot(s)" in embed.description
     # The reader has to understand that these items are gone, not delayed.
@@ -170,6 +171,7 @@ def test_a_busy_alert_names_the_cause_instead_of_claiming_the_monitor_is_down() 
     payload = format_status_alert("busy", LABELS, state, 5000)
     embed = payload.embeds[0]
     assert payload.content is None  # ops messages never ping
+    assert embed.description is not None
     assert "in use elsewhere" in embed.description
     # The phrase to avoid lives in the per-app death FOOTER, so assert it there —
     # asserting its absence from the description is vacuous, and the likeliest wrong
