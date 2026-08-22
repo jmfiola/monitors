@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Protocol
 from monitor.types import HeartbeatExtras, Message, Monitor
 
 from fashionjobs.alert import format_job_alert
-from fashionjobs.site import FashionJobsError
 from fashionjobs.types import FashionItem, FashionJob
 
 
@@ -24,11 +23,7 @@ class FashionJobsMonitor:
         return str(item.job_id)
 
     async def render(self, new: list[FashionItem]) -> list[Message]:
-        jobs: list[FashionJob] = []
-        for item in new:
-            if not isinstance(item, FashionJob):
-                raise FashionJobsError(f"new FashionJobs ID {item.job_id} has no job details")
-            jobs.append(item)
+        jobs = [item for item in new if isinstance(item, FashionJob)]
         jobs.sort(key=lambda job: (job.published_at, job.job_id))
         return [format_job_alert(job) for job in jobs]
 

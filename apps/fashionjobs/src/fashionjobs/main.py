@@ -17,6 +17,7 @@ from monitor.types import Payload
 from fashionjobs.config import LOG_PREFIX, load_config
 from fashionjobs.monitor import FashionJobsMonitor
 from fashionjobs.site import FashionJobsSource
+from fashionjobs.state import validate_state
 
 HTTP_TIMEOUT_SEC = 20.0
 
@@ -32,7 +33,7 @@ async def _main() -> None:
 
     install_shutdown_handlers(log)
 
-    loaded = load_state(cfg.runner.state_path)
+    loaded = validate_state(load_state(cfg.runner.state_path))
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(HTTP_TIMEOUT_SEC),
         follow_redirects=False,
@@ -47,7 +48,14 @@ async def _main() -> None:
         async def poster(url: str, payload: Payload) -> None:
             await post(url, payload, client)
 
-        await run_forever(monitor, cfg.runner, poster=poster, now_unix=system_now, log=log)
+        await run_forever(
+            monitor,
+            cfg.runner,
+            poster=poster,
+            now_unix=system_now,
+            log=log,
+            preloaded_state=loaded,
+        )
 
 
 def main() -> None:

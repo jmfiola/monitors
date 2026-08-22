@@ -1,16 +1,34 @@
 from dataclasses import replace
 from datetime import datetime
+from pathlib import Path
 
-import pytest
+import httpx
 from fashionjobs.config import LABELS, load_config
 from fashionjobs.monitor import FashionJobsMonitor
-from fashionjobs.site import FashionJobsError
+from fashionjobs.site import STAGE_URL, FashionJobsSource, page_url
 from fashionjobs.types import FashionItem, FashionJob, KnownJob
 from monitor.config import RunnerConfig
 from monitor.discord import format_heartbeat
 from monitor.health import init_health
 from monitor.runner import run_tick
 from monitor.types import HeartbeatExtras, Payload
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def fixture(name: str) -> str:
+    return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+PAGE1_TWO = fixture("stage-page-1.html").replace("Stage,5,42.html", "Stage,5,2.html")
+PAGE2_LAST = (
+    fixture("stage-page-2.html")
+    .replace(
+        '      <a rel="next" href="https://fr.fashionjobs.com/fr/contrat/Stage,5,3.html">Suivant</a>\n',
+        "",
+    )
+    .replace("Stage,5,42.html", "Stage,5,2.html")
+)
 
 
 def runner_config() -> RunnerConfig:
@@ -93,6 +111,45 @@ async def test_restart_with_persisted_ids_does_not_duplicate_alerts() -> None:
 
     assert keys == {"1", "2"}
     assert posted == []
+
+
+async def test_real_source_posts_one_new_job_without_duplicating_retained_ids() -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        body = PAGE1_TWO if str(request.url) == STAGE_URL else PAGE2_LAST
+        return httpx.Response(
+            200,
+            text=body,
+            headers={"content-type": "text/html"},
+            request=request,
+        )
+
+    baseline = {"11999999", "12000002", "12000003"}
+    posted: list[Payload] = []
+
+    async def poster(_url: str, payload: Payload) -> None:
+        posted.append(payload)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        monitor = FashionJobsMonitor(
+            FashionJobsSource(client, initial_keys=baseline, log=lambda _message: None)
+        )
+        keys = await run_tick(
+            monitor,
+            runner_config(),
+            baseline,
+            is_first_run=False,
+            poster=poster,
+            post_status=no_status,
+            sleep=no_sleep,
+            log=lambda _message: None,
+        )
+
+    assert requested == [STAGE_URL, page_url(2)]
+    assert keys == {"11999999", "12000001", "12000002", "12000003"}
+    assert [payload.embeds[0].title for payload in posted] == ["Stage Assistant Produit"]
 
 
 async def test_failed_notification_is_withheld_then_retried_successfully() -> None:
@@ -208,10 +265,53 @@ def test_key_uses_only_the_numeric_job_id() -> None:
     assert monitor.key(KnownJob(job_id=12000001)) == "12000001"
 
 
-async def test_a_fresh_placeholder_fails_render_instead_of_banking_an_empty_alert() -> None:
-    monitor = FashionJobsMonitor(_FakeSource([]))
-    with pytest.raises(FashionJobsError, match=r"12000001.*no job details"):
-        await monitor.render([KnownJob(job_id=12000001)])
+async def test_mixed_job_and_placeholder_posts_job_and_withholds_only_placeholder() -> None:
+    monitor = FashionJobsMonitor(_FakeSource([_job(job_id=12000001), KnownJob(job_id=12000002)]))
+    posted: list[Payload] = []
+    logs: list[str] = []
+
+    async def poster(_url: str, payload: Payload) -> None:
+        posted.append(payload)
+
+    keys = await run_tick(
+        monitor,
+        runner_config(),
+        set(),
+        is_first_run=False,
+        poster=poster,
+        post_status=no_status,
+        sleep=no_sleep,
+        log=logs.append,
+    )
+
+    assert keys == {"12000001"}
+    assert [payload.embeds[0].title for payload in posted] == ["Stage Assistant Produit"]
+    assert any("no message covering 1 item(s)" in line for line in logs)
+
+
+async def test_placeholder_only_batch_is_loudly_uncovered_without_raising() -> None:
+    monitor = FashionJobsMonitor(_FakeSource([KnownJob(job_id=12000001)]))
+    posted: list[Payload] = []
+    logs: list[str] = []
+
+    async def poster(_url: str, payload: Payload) -> None:
+        posted.append(payload)
+
+    keys = await run_tick(
+        monitor,
+        runner_config(),
+        set(),
+        is_first_run=False,
+        poster=poster,
+        post_status=no_status,
+        sleep=no_sleep,
+        log=logs.append,
+    )
+
+    assert keys == set()
+    assert posted == []
+    assert any("no message covering 1 item(s)" in line for line in logs)
+    assert not any("render failed" in line for line in logs)
 
 
 def test_heartbeat_extras_are_empty() -> None:

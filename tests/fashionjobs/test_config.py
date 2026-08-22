@@ -68,9 +68,11 @@ async def test_process_seeds_exact_state_and_reuses_one_http_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seeded_keys: set[str] = set()
+    seeded_state = LoadedState(keys=seeded_keys, corrupt=False)
     state_paths: list[str] = []
     discord_clients: list[HttpClient] = []
     runner_configs: list[RunnerConfig] = []
+    runner_states: list[LoadedState] = []
     logs: list[str] = []
     shutdown_logs: list[Callable[[str], None]] = []
 
@@ -87,7 +89,7 @@ async def test_process_seeds_exact_state_and_reuses_one_http_client(
 
     def fake_load_state(path: str) -> LoadedState:
         state_paths.append(path)
-        return LoadedState(keys=seeded_keys, corrupt=False)
+        return seeded_state
 
     def fake_install_shutdown_handlers(log: Callable[[str], None]) -> None:
         shutdown_logs.append(log)
@@ -102,9 +104,11 @@ async def test_process_seeds_exact_state_and_reuses_one_http_client(
         poster: Poster,
         now_unix: Callable[[], int],
         log: Callable[[str], None],
+        preloaded_state: LoadedState,
     ) -> None:
         del monitor, now_unix, log
         runner_configs.append(cfg)
+        runner_states.append(preloaded_state)
         await poster(WEBHOOK, Payload(embeds=()))
 
     monkeypatch.setattr(app_main, "load_config", fake_load_config)
@@ -128,5 +132,46 @@ async def test_process_seeds_exact_state_and_reuses_one_http_client(
     assert client.headers["User-Agent"] == "fashionjobs-monitor/2.0"
     assert discord_clients == [client]
     assert len(runner_configs) == 1
+    assert runner_states == [seeded_state]
+    assert runner_states[0] is seeded_state
+    assert _RecordingSource.initial_keys[0] is runner_states[0].keys
     assert shutdown_logs == [logs.append]
     assert logs == ["app config — filter=Stage country=France keywords=none interval=600s"]
+
+
+@pytest.mark.asyncio
+async def test_process_marks_noncanonical_state_corrupt_before_source_and_runner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_state = LoadedState(keys={" 800 "}, corrupt=False)
+    runner_states: list[LoadedState] = []
+
+    _RecordingSource.clients = []
+    _RecordingSource.initial_keys = []
+
+    def fake_load_config(_env: Env) -> FashionJobsConfig:
+        return load_config({"DISCORD_WEBHOOK_URL": WEBHOOK})
+
+    async def fake_run_forever(
+        monitor: FashionJobsMonitor,
+        cfg: RunnerConfig,
+        *,
+        poster: Poster,
+        now_unix: Callable[[], int],
+        log: Callable[[str], None],
+        preloaded_state: LoadedState,
+    ) -> None:
+        del monitor, cfg, poster, now_unix, log
+        runner_states.append(preloaded_state)
+
+    monkeypatch.setattr(app_main, "load_config", fake_load_config)
+    monkeypatch.setattr(app_main, "load_state", lambda _path: invalid_state)
+    monkeypatch.setattr(app_main, "install_shutdown_handlers", lambda _log: None)
+    monkeypatch.setattr(app_main, "FashionJobsSource", _RecordingSource)
+    monkeypatch.setattr(app_main, "run_forever", fake_run_forever)
+    monkeypatch.setattr(app_main, "log", lambda _message: None)
+
+    await app_main._main()
+
+    assert _RecordingSource.initial_keys == [None]
+    assert runner_states == [LoadedState(keys=None, corrupt=True)]
