@@ -1093,6 +1093,47 @@ async def test_duplicate_end_pagination_declarations_discard_transaction() -> No
     )
 
 
+def test_identical_repeated_pagination_declarations_are_accepted() -> None:
+    repeated_next = f'<a rel="next" href="{page_url(2)}">Suivant</a>'
+    repeated_end = f'<a rel="end" href="{page_url(42)}">42</a>'
+    html = (
+        fixture("stage-page-1.html")
+        .replace(repeated_next, repeated_next * 2)
+        .replace(repeated_end, repeated_end * 2)
+    )
+
+    page = parse_page(html, expected_url=STAGE_URL)
+
+    assert page.next_url == page_url(2)
+    assert page.last_page == 42
+
+
+async def test_identical_repeated_pagination_declarations_traverse_source() -> None:
+    repeated_next = f'<a rel="next" href="{page_url(2)}">Suivant</a>'
+    repeated_end = f'<a rel="end" href="{page_url(2)}">2</a>'
+    page_one = (
+        fixture("stage-page-1.html")
+        .replace(repeated_next, repeated_next * 2)
+        .replace(f'<a rel="end" href="{page_url(42)}">42</a>', repeated_end * 2)
+    )
+    final_page = fixture("stage-page-42-final.html").replace(page_url(42), page_url(2))
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        body = page_one if str(request.url) == STAGE_URL else final_page
+        return html_response(request, body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        source = FashionJobsSource(client, initial_keys=None, log=lambda _message: None)
+        items = await source.fetch()
+
+    assert requested == [STAGE_URL, page_url(2)]
+    assert {item.job_id for item in items} == {11999998, 12000001, 12000002, 12000003}
+    assert source._known_ids == {11999998, 12000001, 12000002, 12000003}
+    assert not source._force_full_scan
+
+
 async def test_zero_result_learned_final_page_discards_transaction() -> None:
     empty_final_page = fixture("empty-stage-page.html").replace(STAGE_URL, page_url(2))
 

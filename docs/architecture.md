@@ -175,6 +175,11 @@ due once at least 86,400 monotonic seconds have elapsed and runs on the next pol
 Failed startup or due scans commit neither candidate identity state nor the
 completion marker, so they remain due.
 
+FashionJobs may render responsive pagination controls twice. Repeated `rel=next`
+or `rel=end` anchors are accepted only when every declaration has the same valid
+Stage URL; missing or conflicting declarations fail closed before the transaction
+can commit.
+
 Ordinary intervening ticks read pages in order and stop at the first page containing
 no ID unseen before that read. The retained ID set only grows, and a listing that
 disappears from current HTML remains represented by a `KnownJob` placeholder. That

@@ -281,10 +281,8 @@ class _FashionJobsPageParser(HTMLParser):
         self._has_stage_contract = False
         self._stage_heading: tuple[int, list[str]] | None = None
         self._stage_heading_seen = False
-        self._next_url: str | None = None
-        self._next_pagination_count = 0
-        self._end_url: str | None = None
-        self._end_pagination_count = 0
+        self._next_urls: list[str | None] = []
+        self._end_urls: list[str | None] = []
         self._page_text: list[str] = []
         self._jobs: list[FashionJob] = []
         self._excluded_contracts: list[str] = []
@@ -319,11 +317,9 @@ class _FashionJobsPageParser(HTMLParser):
         ):
             self._has_stage_contract = True
         if tag == "a" and attributes.get("rel") == "next":
-            self._next_pagination_count += 1
-            self._next_url = attributes.get("href")
+            self._next_urls.append(attributes.get("href"))
         if tag == "a" and attributes.get("rel") == "end":
-            self._end_pagination_count += 1
-            self._end_url = attributes.get("href")
+            self._end_urls.append(attributes.get("href"))
         if tag == "h1":
             self._stage_heading = (self._depth, [])
 
@@ -456,14 +452,12 @@ class _FashionJobsPageParser(HTMLParser):
             raise FashionJobsParseError("FashionJobs page did not expose a Stage result count")
         result_count = int(count_match.group(1).replace(" ", ""))
         next_url = self._pagination_url(
-            self._next_url,
+            self._next_urls,
             "next",
-            count=self._next_pagination_count,
         )
         end_url = self._pagination_url(
-            self._end_url,
+            self._end_urls,
             "end",
-            count=self._end_pagination_count,
         )
         end_match = _STAGE_PAGE_URL.fullmatch(end_url) if end_url is not None else None
         current_page = int(page_match.group(1)) if page_match.group(1) else 1
@@ -476,7 +470,7 @@ class _FashionJobsPageParser(HTMLParser):
 
         if result_count == 0 and self._completed_cards > 0:
             raise FashionJobsParseError("FashionJobs claimed zero results but exposed job cards")
-        if result_count == 0 and (self._next_url is not None or self._end_url is not None):
+        if result_count == 0 and (self._next_urls or self._end_urls):
             raise FashionJobsParseError("FashionJobs claimed zero results but exposed pagination")
         if 0 < result_count < unique_job_count:
             raise FashionJobsParseError(
@@ -565,13 +559,16 @@ class _FashionJobsPageParser(HTMLParser):
         )
 
     @staticmethod
-    def _pagination_url(url: str | None, rel: str, *, count: int) -> str | None:
-        if count == 0:
+    def _pagination_url(urls: list[str | None], rel: str) -> str | None:
+        if not urls:
             return None
-        if count > 1:
-            raise FashionJobsParseError(f"FashionJobs exposed duplicate {rel} pagination links")
-        if url is None:
+        if any(url is None for url in urls):
             raise FashionJobsParseError(f"FashionJobs {rel} pagination URL is missing")
+        unique_urls = set(urls)
+        if len(unique_urls) > 1:
+            raise FashionJobsParseError(f"FashionJobs exposed duplicate {rel} pagination links")
+        url = urls[0]
+        assert url is not None
         if _STAGE_PAGE_URL.fullmatch(url) is None:
             raise FashionJobsParseError(f"FashionJobs {rel} pagination URL is invalid")
         return url

@@ -284,6 +284,9 @@ A positive pagination-free page is accepted only when the source has explicitly
 supplied that exact requested page as the final page learned earlier in the same
 walk. Pagination-free intermediate pages, final-page next links, malformed next
 URLs, cycles, and partial failures remain fail-closed transaction aborts.
+Repeated responsive `rel=next` or `rel=end` anchors are valid only when every
+declaration has the same valid Stage URL; missing or conflicting declarations fail
+closed before state or full-scan completion commits.
 
 Numeric FJOB IDs never shrink when cards reorder or disappear. Full records remain
 available in memory when possible; otherwise `KnownJob` placeholders preserve the
