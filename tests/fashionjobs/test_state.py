@@ -8,6 +8,8 @@ from monitor.state import LoadedState
     [
         {" 800 "},
         {"0800"},
+        {"+800"},
+        {"-800"},
         {"abc"},
         {"0"},
         {"800", "abc"},
@@ -21,6 +23,18 @@ def test_any_noncanonical_job_id_makes_the_whole_state_corrupt(keys: set[str]) -
 
 def test_canonical_positive_decimal_ids_are_preserved_exactly() -> None:
     loaded = LoadedState(keys={"1", "800", "12000001"}, corrupt=False)
+
+    assert validate_state(loaded) is loaded
+
+
+def test_a_job_id_too_large_for_safe_integer_conversion_is_corrupt() -> None:
+    loaded = validate_state(LoadedState(keys={"9" * 5000}, corrupt=False))
+
+    assert loaded == LoadedState(keys=None, corrupt=True)
+
+
+def test_a_large_but_convertible_positive_job_id_is_preserved() -> None:
+    loaded = LoadedState(keys={"9" * 100}, corrupt=False)
 
     assert validate_state(loaded) is loaded
 
