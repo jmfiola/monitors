@@ -158,13 +158,15 @@ one-page `v2.1.1` smoke then failed closed because titled recruitment links surr
 and otherwise overwrite the real job link. `v2.1.2` passed its focused smoke, but its
 first baseline exposed the promoted/final-page pagination shape. All published images
 remain immutable; `v2.1.3` remains undeployed after its structural smoke exposed
-identical responsive pagination anchors. Pending `v2.1.4` contains the focused
-pagination fix and is the declared tag in `apps.auto.tfvars`.
+identical responsive pagination anchors. `v2.1.4` contained the focused pagination
+fix, but its first baseline failed closed, before state or alerts, on a structurally
+present but blank location. Pending `v2.1.5` permits that blank location text while
+retaining the required metadata slot and is the declared tag in `apps.auto.tfvars`.
 
 From the repository root, the FashionJobs image step is:
 
 ```bash
-IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.4"
+IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.5"
 docker build --platform linux/amd64 --build-arg APP=fashionjobs -t "$IMAGE" .
 docker push "$IMAGE"
 ```

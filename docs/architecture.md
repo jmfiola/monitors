@@ -135,9 +135,11 @@ Parser completion means balanced HTML depth and no unfinished card, capture, or
 heading state. Each card must expose exactly two semantic metadata fields: contract
 and location. Exactly one timezone-aware absolute `time-ago[data-value]` is required.
 Only that element's localized descendant display text is ignored; empty or sibling
-semantic metadata still counts and fails the exact shape guard. Void timestamp
-elements and nested metadata wrappers fail immediately. Contract labels are
-limited to `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and `Free-lance`:
+semantic metadata still counts and fails the exact shape guard, except that a
+structurally present location slot may contain blank text and is then omitted from
+the alert. Void timestamp elements and nested metadata wrappers fail immediately.
+Contract labels are limited to `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, and
+`Free-lance`:
 recognized non-Stage cards are deliberately excluded and logged, while an unknown
 label or metadata shape fails closed. Every declared end, including a later
 promotion, is capped by `MAX_PAGES=100` before it extends traversal.
@@ -340,8 +342,11 @@ one-page `v2.1.1` smoke then exposed titled recruitment links surrounding the re
 job link. `v2.1.2` passed its focused smoke, but its first baseline exposed the
 promoted/final-page pagination shape. All published images remain immutable;
 `v2.1.3` remains undeployed after its structural smoke exposed identical responsive
-pagination anchors. Infrastructure declares pending `v2.1.4`, which contains the
-focused pagination fix.
+pagination anchors. `v2.1.4` contained the focused pagination fix, but its first
+baseline failed closed, before state or alerts, on a structurally present but blank
+location. Infrastructure declares pending `v2.1.5`, which preserves the required
+location slot while allowing blank text and omitting the unavailable field from
+Discord alerts.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).
