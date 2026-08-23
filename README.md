@@ -10,18 +10,6 @@ GCE `e2-micro`.
 | `jeffco` | Jeffco substitute teaching jobs | SmartFindExpress |
 | `fashionjobs` | France-wide `Stage` listings, all roles and no keywords | [fixed FashionJobs HTML route](https://fr.fashionjobs.com/fr/contrat/Stage,5.html) |
 
-FashionJobs sends one Discord message for each newly observed internship on the
-next successful poll. It does not filter by role, title, company, category, region,
-department, city, or keyword.
-
-Every process startup makes one bounded transactional full scan; a successful process
-repeats that safety scan every 86,400 monotonic seconds. Ordinary intervening ticks
-fast-stop at the known frontier, so 600-second polling is normally about six page-1
-requests per hour plus at most one declared full walk daily and one per restart.
-Failed startup or due scans remain due until a full transaction succeeds. The
-`MAX_PAGES=100` ceiling bounds unexpected pagination while the quiet steady state
-keeps network, CPU, and memory impact modest.
-
 Every app implements four methods — `fetch`, `key`, `render`, `heartbeat_extras` — and
 the shared `run_forever()` owns the poll loop, state diffing, backoff, health, and
 Discord delivery.
@@ -40,15 +28,7 @@ recipe.
 just setup                                # install the uv workspace
 just check                                # test, typecheck, lint, format-check
 just test tests/fashionjobs -k pagination # forwards pytest args
-just parity                               # needs node + the sibling repos
 ```
-
-Melanzana and Jeffco have TypeScript reference implementations in sibling repos.
-`just parity` renders every Discord payload each implementation can produce on a
-frozen clock and requires the diff to be empty — it catches field ordering, number
-formatting and exact punctuation that unit tests miss. It is outside `just check`
-because it needs those repos and a node toolchain. FashionJobs is intentionally
-outside this shared parity scope and is covered by its Python fixtures and tests.
 
 ## Design decisions worth knowing up front
 
