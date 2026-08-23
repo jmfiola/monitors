@@ -25,10 +25,20 @@ def discord_text(value: str, limit: int) -> str:
 
 
 def format_job_alert(job: FashionJob) -> Message:
+    unix = int(job.published_at.timestamp())
     fields = [Field(name="Company", value=discord_text(job.company, 1024))]
     if job.location:
         fields.append(Field(name="Location", value=discord_text(job.location, 1024)))
-    fields.append(Field(name="Contract", value=discord_text(job.contract, 1024)))
+    fields.extend(
+        [
+            Field(name="Contract", value=discord_text(job.contract, 1024)),
+            Field(
+                name="Published",
+                value=f"<t:{unix}:F> · <t:{unix}:R>",
+                inline=False,
+            ),
+        ]
+    )
     embed = Embed(
         title=discord_text(job.title, 256),
         description=None,

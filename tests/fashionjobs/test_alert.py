@@ -33,6 +33,7 @@ def test_alert_contains_every_reliable_job_field() -> None:
         ("Company", "MAISON EXEMPLE"),
         ("Location", "Paris"),
         ("Contract", "Stage"),
+        ("Published", "<t:1787341827:F> · <t:1787341827:R>"),
     ]
     assert message.covers == ("12000001",)
     assert message.payload.allowed_mentions_parse == ()
@@ -46,16 +47,19 @@ def test_alert_omits_blank_location_without_empty_fields() -> None:
     assert [(field.name, field.value) for field in embed.fields or ()] == [
         ("Company", "MAISON EXEMPLE"),
         ("Contract", "Stage"),
+        ("Published", "<t:1787341827:F> · <t:1787341827:R>"),
     ]
     assert all(field.name and field.value for field in embed.fields or ())
 
 
-def test_alert_omits_the_ambiguous_fashionjobs_timestamp() -> None:
+def test_alert_publication_time_pairs_fixed_and_relative() -> None:
     message = format_job_alert(_job())
-    fields = message.payload.embeds[0].fields or ()
+    published = next(
+        field for field in message.payload.embeds[0].fields or () if field.name == "Published"
+    )
 
-    assert "Published" not in {field.name for field in fields}
-    assert all("<t:" not in field.value for field in fields)
+    assert published.value == "<t:1787341827:F> · <t:1787341827:R>"
+    assert published.inline is False
 
 
 def test_alert_omits_redundant_fashionjobs_france_footer() -> None:

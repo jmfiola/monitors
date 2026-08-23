@@ -243,11 +243,11 @@ it went to the same dead endpoint, which is why those two rows differ.
 
 For FashionJobs, each message covers exactly its numeric listing ID. The embed title
 is the listing title, the URL is its FashionJobs link, and the fields appear as
-`Company`, optional non-empty `Location`, then `Contract`. The source card timestamp
-still provides deterministic first-seen ordering, but is not rendered because it does
-not reliably represent the employer's original posting date. The embed description
-and redundant FashionJobs France footer are also omitted. Source Markdown is escaped,
-field limits are respected, and
+`Company`, optional non-empty `Location`, `Contract`, then `Published` with the card's
+own publication timestamp in Discord's fixed absolute style alongside its live
+relative style. That same timestamp also gives first-seen ordering its deterministic
+key. The embed description and redundant FashionJobs France footer are omitted.
+Source Markdown is escaped, field limits are respected, and
 `allowed_mentions.parse` is empty, so source text such as `@everyone` cannot ping.
 If delivery fails retryably, that ID remains outside the saved baseline and is retried
 on the next successful delivery; delivered IDs and other safely banked IDs still
@@ -353,8 +353,10 @@ changing relative-time suffix and the redundant FashionJobs France footer. Its
 rollout retained the baseline, delivered one newly observed listing, and persisted
 1,243 unique identities. `v2.1.7` omits the generic alert description while
 preserving every job-specific field. Its rollout retained the baseline, completed a
-successful poll with 1,246 identities, and restarted only FashionJobs. Infrastructure
-declares pending `v2.1.8`, which removes the ambiguous card timestamp from alerts.
+successful poll with 1,246 identities, and restarted only FashionJobs. `v2.1.8`
+dropped the card timestamp from alerts entirely and ran in production for five hours.
+Infrastructure declares pending `v2.1.9`, which restores `Published` with both the
+fixed absolute and the live relative Discord styles.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).
