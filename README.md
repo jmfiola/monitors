@@ -14,16 +14,13 @@ FashionJobs sends one Discord message for each newly observed internship on the
 next successful poll. It does not filter by role, title, company, category, region,
 department, city, or keyword.
 
-Discovery on 2026-08-21 observed 1,266 active Stage listings across 42 pages and
-supported an estimate of roughly 15–25 new matching listings per day. That
-point-in-time snapshot is not a permanent volume guarantee, but it supports useful
-per-listing notifications without a digest. Every process startup makes one bounded
-transactional full scan; a successful process repeats that safety scan every 86,400
-monotonic seconds. Ordinary intervening ticks fast-stop at the known frontier, so
-600-second polling is normally about six page-1 requests per hour plus at most one
-declared full walk daily and one per restart. Failed startup or due scans remain due
-until a full transaction succeeds. The `MAX_PAGES=100` ceiling bounds unexpected
-pagination while the quiet steady state keeps network, CPU, and memory impact modest.
+Every process startup makes one bounded transactional full scan; a successful process
+repeats that safety scan every 86,400 monotonic seconds. Ordinary intervening ticks
+fast-stop at the known frontier, so 600-second polling is normally about six page-1
+requests per hour plus at most one declared full walk daily and one per restart.
+Failed startup or due scans remain due until a full transaction succeeds. The
+`MAX_PAGES=100` ceiling bounds unexpected pagination while the quiet steady state
+keeps network, CPU, and memory impact modest.
 
 Every app implements four methods — `fetch`, `key`, `render`, `heartbeat_extras` — and
 the shared `run_forever()` owns the poll loop, state diffing, backoff, health, and
@@ -36,20 +33,22 @@ Discord delivery.
 
 ## Working on it
 
+The `justfile` is the command interface (`brew install just`); `just --list` shows every
+recipe.
+
 ```bash
-uv sync
-uv run pytest -q                                   # 422
-uv run mypy --strict lib apps tests tools
-uv run ruff check . && uv run ruff format --check .
-./tools/parity-diff.sh                             # needs node + the sibling repos
+just setup                                # install the uv workspace
+just check                                # test, typecheck, lint, format-check
+just test tests/fashionjobs -k pagination # forwards pytest args
+just parity                               # needs node + the sibling repos
 ```
 
 Melanzana and Jeffco have TypeScript reference implementations in sibling repos.
-`parity-diff.sh` renders every Discord payload each implementation can produce on a
+`just parity` renders every Discord payload each implementation can produce on a
 frozen clock and requires the diff to be empty — it catches field ordering, number
-formatting and exact punctuation that unit tests miss. It is outside `pytest` because it
-needs those repos and a node toolchain. FashionJobs is intentionally outside this
-shared parity scope and is covered by its Python fixtures and tests.
+formatting and exact punctuation that unit tests miss. It is outside `just check`
+because it needs those repos and a node toolchain. FashionJobs is intentionally
+outside this shared parity scope and is covered by its Python fixtures and tests.
 
 ## Design decisions worth knowing up front
 
@@ -83,8 +82,8 @@ containing a delete** — a replaced instance takes the boot disk with it, and e
 `state.json`.
 
 ```bash
-./infra/deploy.sh --plan      # plan only
-./infra/deploy.sh --verify    # verify only, change nothing
+just infra-plan      # plan only
+just infra-verify    # verify only, change nothing
 ```
 
 To ship a new version, bump the tag in `infra/apps.auto.tfvars` (committed, so git records
@@ -94,9 +93,9 @@ The full runbook is in [`infra/README.md`](infra/README.md).
 Logs are per app:
 
 ```bash
-./infra/logs.sh melanzana
-./infra/logs.sh jeffco --freshness=6h
-./infra/logs.sh fashionjobs --freshness=6h
+just logs melanzana
+just logs jeffco --freshness=6h
+just logs fashionjobs --freshness=6h
 ```
 
 Apps log nothing on a tick with no news, so a quiet log is normal — and means a hung
