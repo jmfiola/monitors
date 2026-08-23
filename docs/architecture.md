@@ -355,8 +355,9 @@ rollout retained the baseline, delivered one newly observed listing, and persist
 preserving every job-specific field. Its rollout retained the baseline, completed a
 successful poll with 1,246 identities, and restarted only FashionJobs. `v2.1.8`
 dropped the card timestamp from alerts entirely and ran in production for five hours.
-Infrastructure declares pending `v2.1.9`, which restores `Published` with both the
-fixed absolute and the live relative Discord styles.
+`v2.1.9` restores `Published` with both the fixed absolute and the live relative
+Discord styles. Its rollout retained the baseline, completed a full startup scan,
+delivered six newly observed listings, and persisted 1,257 unique identities.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).

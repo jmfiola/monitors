@@ -170,9 +170,10 @@ rollout retained the baseline, delivered one newly observed listing, and persist
 every job-specific field. Its rollout retained the baseline, completed a successful
 poll with 1,246 identities, and restarted only FashionJobs. `v2.1.8` dropped the
 FashionJobs card timestamp from alerts entirely, rolled out, and delivered listings
-without it; it is the deployed predecessor. Pending `v2.1.9` restores the `Published`
-field with Discord's fixed absolute style alongside its live relative style; it is the
-tag declared in `apps.auto.tfvars`.
+without it. `v2.1.9` restores the `Published` field with Discord's fixed absolute style
+alongside its live relative style. Its rollout retained the baseline, completed a full
+startup scan, delivered six newly observed listings, and persisted 1,257 unique
+identities; it is the deployed tag declared in `apps.auto.tfvars`.
 
 From the repository root, the FashionJobs image step is:
 
