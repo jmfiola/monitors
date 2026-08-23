@@ -71,14 +71,10 @@ cd infra
 ./deploy.sh
 ```
 
-That is the whole thing, and using it matters: **`terraform apply` alone is only
-half a deploy.** GCE does not re-run the startup script when metadata changes, so
-applying on its own leaves the host running exactly what it ran before — a deploy
-that looks like it worked and didn't. `deploy.sh` applies, re-runs the startup
-script over SSH, then verifies units, containers, memory, and recent output.
-
-It also **refuses any plan containing a delete**, because a replaced instance
-takes the boot disk with it, along with every app's `state.json`.
+That is the whole thing. `deploy.sh` applies, re-runs the startup script over SSH, then
+verifies units, containers, memory, and recent output. It refuses any plan containing a
+delete. **Never run `terraform apply` on its own — that is half a deploy.** Both rules
+and why neither may be relaxed are in [`docs/invariants.md`](../docs/invariants.md).
 
 To ship a new version, bump the tag in `apps.auto.tfvars` (committed, so git
 records what is deployed) and run `./deploy.sh`.
@@ -149,36 +145,11 @@ for app in melanzana jeffco fashionjobs; do
 done
 ```
 
-### FashionJobs rollout status
-
-The first FashionJobs `v2.1.0` rollout proved the production GCE egress path and
-Discord webhook, then failed closed because the live page omitted optional localized
-timestamp display text while retaining the required absolute `data-value`. A
-one-page `v2.1.1` smoke then failed closed because titled recruitment links surround
-and otherwise overwrite the real job link. `v2.1.2` passed its focused smoke, but its
-first baseline exposed the promoted/final-page pagination shape. All published images
-remain immutable; `v2.1.3` remains undeployed after its structural smoke exposed
-identical responsive pagination anchors. `v2.1.4` contained the focused pagination
-fix, but its first baseline failed closed, before state or alerts, on a structurally
-present but blank location. `v2.1.5` permits that blank location text while retaining
-the required metadata slot. Its production rollout completed a 42-page baseline,
-persisted 1,242 unique identities, and sent no first-run alerts; it is the deployed
-predecessor. `v2.1.6` keeps the fixed publication date while removing Discord's
-changing relative-time suffix and the redundant FashionJobs France footer. Its
-rollout retained the baseline, delivered one newly observed listing, and persisted
-1,243 unique identities. `v2.1.7` omits the generic alert description while preserving
-every job-specific field. Its rollout retained the baseline, completed a successful
-poll with 1,246 identities, and restarted only FashionJobs. `v2.1.8` dropped the
-FashionJobs card timestamp from alerts entirely, rolled out, and delivered listings
-without it. `v2.1.9` restores the `Published` field with Discord's fixed absolute style
-alongside its live relative style. Its rollout retained the baseline, completed a full
-startup scan, delivered six newly observed listings, and persisted 1,257 unique
-identities; it is the deployed tag declared in `apps.auto.tfvars`.
-
-From the repository root, the FashionJobs image step is:
+Each app's deployed tag is its `image_tag` in `apps.auto.tfvars`. From the repository
+root, one app's image step is:
 
 ```bash
-IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.9"
+IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:<tag>"
 docker build --platform linux/amd64 --build-arg APP=fashionjobs -t "$IMAGE" .
 docker push "$IMAGE"
 ```

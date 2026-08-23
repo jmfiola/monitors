@@ -105,6 +105,8 @@ It is logged and the loop continues on the in-memory baseline. Treating it as a 
 failure would throttle polling, latch a false death alert, and suppress the heartbeat —
 all while alerting was working perfectly.
 
+- `test_a_state_write_failure_is_logged_and_the_loop_continues`
+
 ## 6. jeffco posts one message per job, and there is no cap
 
 `apps/jeffco/src/jeffco/alert.py`
@@ -164,6 +166,8 @@ This stays in the app rather than the library on purpose: it counts *login* fail
 specifically and its window is SmartFindExpress's account policy, not poll arithmetic.
 Hoisting it would give the library a failure-ceiling abstraction with one caller.
 `timing.py` carries the hazard as a comment so the next authenticated app notices it.
+
+- `test_stops_attempting_to_log_in_after_three_consecutive_failures`
 
 ## 10. Every HTTP send goes through one funnel
 
@@ -227,26 +231,27 @@ do not.
 
 The source is exactly the France-wide FashionJobs `Stage` HTML route. There is no
 keyword, role, title, company, category, region, department, city, or other location
-filter. The parser also requires the canonical route and checked structured contract
-filter ID `5`; a URL that merely looks plausible is not enough.
+filter. The parser requires the canonical route and checked structured contract filter
+ID `5`; a URL that merely looks plausible is not enough.
 
-Parser completion requires balanced HTML depth and finalized card, capture, and
-heading state. Each card has exactly two semantic metadata fields, contract and
-location, and exactly one timezone-aware absolute `time-ago[data-value]`. The
-location slot is structurally required but its normalized text may be blank; this is
-an alert detail, not a route filter. Only the timestamp element's localized descendant
-display text may be empty and is ignored; empty sibling semantic metadata remains
-visible to the exact shape guard. Void timestamp elements and nested metadata wrappers
-fail immediately. The known contract whitelist is `Stage`, `CDI`, `CDD`, `Alternance`,
-`Intérim`, and `Free-lance`.
-Recognized non-Stage cards are deliberately excluded and logged; they do not fail the
-page merely for being non-Stage. An unknown label or metadata shape fails closed. If
-the page declares positive Stage results but every recognized card is non-Stage, the
-complete filter leak still fails rather than looking empty.
+**The card shape guard is exact on purpose, and a malformed card fails the page rather
+than being skipped.** Skipping is the tempting simplification, and it turns a site
+redesign into a permanently quiet monitor: unparseable cards silently stop existing,
+every signal reads healthy, nothing says the alerts stopped. Unknown contract labels
+and unexpected metadata shapes therefore fail closed too. Two narrow exceptions: the
+required location slot may hold blank text, and the timestamp's localized display text
+may be empty because the parser reads its absolute `data-value`.
 
-Only validated `/emploi/` and `/redir/` titled links may supply a job identity.
-Titled `/fr/recrutement/` links are company links, not jobs; any other invalid titled
-route or conflicting pair of supported job links fails the card.
+Recognized non-Stage cards are excluded and logged rather than failing the page — but
+if the page declares positive Stage results and *every* recognized card is non-Stage,
+that complete filter leak fails rather than looking legitimately empty.
+
+Job identity comes only from validated `/emploi/` and `/redir/` titled links. Titled
+`/fr/recrutement/` links are company links; letting document order choose between a
+company link and a job link attaches one listing's identity to another's URL.
+
+Contract whitelist: `Stage`, `CDI`, `CDD`, `Alternance`, `Intérim`, `Free-lance`. The
+test names below carry the exact shapes that must fail.
 
 - `test_stage_route_is_fixed_and_has_no_keyword_or_location_query`
 - `test_truncated_document_fails_after_a_complete_card`
@@ -271,37 +276,33 @@ route or conflicting pair of supported job links fails the card.
 
 `apps/fashionjobs/src/fashionjobs/site.py`
 
+**Nothing commits until the whole required traversal succeeds** — not candidate IDs,
+not records, not the force flag, not the completion timestamp. So a failed startup or
+due scan stays due and retries from page 1 against unchanged state. Committing
+partially is how a monitor advances its frontier past listings it never announced.
+
 Every process startup requires a bounded full scan through the first page's declared
-end, even from seeded state. After a successful scan, another becomes due when at
-least 86,400 monotonic seconds have elapsed and runs on the next poll; ordinary
-intervening reads may stop at the first page with no ID unseen before that read.
-Failed startup and due scans remain due because no candidate IDs, records, force
-flag, or completion timestamp commits until the entire required traversal succeeds.
-`MAX_PAGES=100` accepts page 100 and rejects a declared page 101 before the crawler
-can fan out unexpectedly.
+end, **even from seeded state**, and another becomes due 86,400 monotonic seconds
+after the last success. Ordinary reads in between may stop at the first page with no
+newly-seen ID. Without the periodic full scan, a listing inserted deep in pagination
+is never reached, because fast-stop ticks only ever look at the frontier.
 
-When a validated next-link chain reaches a later declared end, the transaction
-promotes its bound and traverses through that page; a later lower end still fails.
-A pagination-free positive page is accepted only when page 1 self-proves that its
-declared result count equals its visible unique IDs, or when the source explicitly
-supplied that exact requested page as the final page learned earlier in the same
-walk. A zero-result page 1 remains valid. Other pagination-free positive pages,
-final-page next links, malformed next URLs, cycles, and partial failures remain
-fail-closed transaction aborts. Responsive anchor `rel` values are case-insensitive
-token sets; repeated `next` or `end` declarations are valid only when every
-declaration has the same valid Stage URL, while missing or conflicting declarations
-fail closed before state or full-scan completion commits.
+`MAX_PAGES=100` accepts page 100 and rejects a declared 101 before the crawler can fan
+out. Pagination is otherwise fail-closed: a later declared end promotes the bound, a
+later *lower* end aborts, and malformed next URLs, cycles, final-page next links and
+partial failures all abort. A pagination-free positive page is accepted only when page 1
+self-proves its declared count equals its visible unique IDs, or when that exact final
+page was already learned in the same walk. Anything looser lets a truncated response
+look like the end of the catalogue.
 
-Numeric FJOB IDs never shrink when cards reorder or disappear. Full records remain
-available in memory when possible; otherwise `KnownJob` placeholders preserve the
-identity. Ordinary and promoted cards with one ID reconcile only when their core
-fields agree, preferring a direct `/emploi/` URL. Promoted `/redir/` cards are parsed
-from the result HTML but never crawled for identity; traversal requests only the
-fixed Stage pagination URLs.
+**Numeric FJOB IDs never shrink when cards reorder or disappear.** Full records stay in
+memory when possible; otherwise `KnownJob` placeholders preserve the identity. Losing
+an identity re-alerts a listing already announced, and the site reorders constantly.
 
-The direct-URL preference and HTML content-type check are load-bearing too: a direct
-`/emploi/` record must replace an earlier promoted `/redir/` duplicate, and a 2xx
-non-HTML body is a source error rather than parser input.
+Cards sharing one ID reconcile only when their core fields agree, preferring a direct
+`/emploi/` URL over a promoted `/redir/` one. Promoted cards are parsed from the result
+HTML but **never crawled** for identity; traversal requests only the fixed Stage
+pagination URLs. A 2xx non-HTML body is a source error, not parser input.
 
 - `test_page_two_failure_discards_the_whole_candidate_read`
 - `test_seeded_startup_scans_to_end_then_frontier_fast_stops`
@@ -362,20 +363,25 @@ IDs and every later unattempted ID are unsettled and withheld for the next tick.
 
 `apps/fashionjobs/src/fashionjobs/alert.py`
 
-Each listing gets one embed with title and URL plus `Company`, optional non-empty
-`Location`, `Contract`, and `Published` fields. `Published` renders the card's own
-publication timestamp in Discord's fixed absolute style alongside its live relative
-style, so one field carries both the date and how long ago it was. That same
-timestamp keys first-seen ordering. The embed omits a generic description and the
-redundant FashionJobs France footer. Source Markdown is escaped within Discord
-limits, and the payload always sends `allowed_mentions: {"parse": []}`. Removing that
-pairing turns an upstream title such as `@everyone` into a channel-wide ping.
+Every field in a FashionJobs alert is attacker-controlled text from a public job board.
+Source Markdown is escaped, and the payload always sends
+`allowed_mentions: {"parse": []}`. Removing that pairing turns an upstream title such
+as `@everyone` into a channel-wide ping.
 
-- `test_alert_contains_every_reliable_job_field`
-- `test_alert_publication_time_pairs_fixed_and_relative`
-- `test_alert_omits_redundant_fashionjobs_france_footer`
+Escaping and Discord's length limits interact. `discord_text` escapes one character at
+a time and measures the *escaped* length as it goes, refusing to append a piece that
+would overflow. Escaping first and slicing to the limit afterwards is the obvious
+simplification and it splits `\<` down the middle, leaving a **dangling backslash**
+that escapes whatever follows it — including the ellipsis, or nothing at all.
+
+Which fields the embed carries is a product decision, not an invariant — it has changed
+several times and will again. One dependency is *not* free to change with it:
+`monitor.py` sorts new listings by `(published_at, job_id)`, so `site.py` must keep
+parsing and hard-validating the card timestamp whether or not any alert displays it.
+
 - `test_source_markdown_is_escaped_and_everyone_is_disabled`
 - `test_escaped_title_and_fields_respect_discord_limits_without_dangling_escape`
+- `test_render_orders_new_jobs_by_timestamp_then_numeric_id`
 
 ---
 
