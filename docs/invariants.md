@@ -155,7 +155,7 @@ anything escaping it silences all alerting indefinitely.
 
 `apps/jeffco/src/jeffco/sfe.py`
 
-A wrong credential retried on a 60-second cadence is ~1,440 attempts a day against an
+A wrong credential retried on a 45-second cadence is ~1,920 attempts a day against an
 account belonging to a real person who gets work through that site. After three
 consecutive login failures the client stops attempting for an hour, and the suppressed
 tick makes **no request at all**.

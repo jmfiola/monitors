@@ -46,12 +46,13 @@ def load_config(env: Env) -> JeffcoConfig:
             env,
             labels=LABELS,
             log_prefix=LOG_PREFIX,
-            # 60s. Deliberately slower than melanzana's 10s: this monitor logs in
-            # as the substitute it watches for, and a poll in flight while he is on
+            # 45s. Still far slower than melanzana's 10s: this monitor logs in as
+            # the substitute it watches for, and a poll in flight while he is on
             # the site draws an HTTP 400 on one side or a stale listing on the
-            # other (see jeffco.sfe.is_account_busy). Do NOT lower this to match
-            # melanzana while the login is shared with a person.
-            default_poll_interval_sec=60,
+            # other (see jeffco.sfe.is_account_busy). The extra 15s of notice is
+            # paid for in collisions. Do NOT lower this further toward melanzana
+            # while the login is shared with a person.
+            default_poll_interval_sec=45,
         ),
         sfe_user_id=env_required(env, "SFE_USER_ID"),
         sfe_pin=env_required(env, "SFE_PIN"),

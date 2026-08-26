@@ -21,7 +21,7 @@ jeffco_sfe_user_id         = "900001"
 jeffco_sfe_pin             = "xxxxxx"
 jeffco_discord_webhook_url = "https://discord.com/api/webhooks/xxxx/yyyy"
 # jeffco_status_webhook_url = "https://discord.com/api/webhooks/xxxx/zzzz"
-# jeffco_poll_interval_sec  = 60   # lower collides with the account holder's own session
+# jeffco_poll_interval_sec  = 45   # lower collides with the account holder's own session
 
 # --- fashionjobs-monitor (France-wide Stage listings) ---
 fashionjobs_discord_webhook_url = "https://discord.com/api/webhooks/xxxx/yyyy"

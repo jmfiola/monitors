@@ -130,20 +130,22 @@ variable "jeffco_status_webhook_url" {
   default     = ""
 }
 
-# 60s, deliberately slower than the official SFE web client's own 30s refresh,
-# because the monitor shares one login with the substitute it watches for. SFE
-# answers HTTP 400 while a second session is active on the account, and the
-# evidence that this is what the 400s are is diurnal: across the monitor's first
-# ~59 hours, all 34 of them landed between 06:00 and midnight, with none in three
-# nights of overnight polling. He sees the same conflict from his side, as jobs
-# that only appear after a manual refresh.
+# 45s, still slower than the official SFE web client's own 30s refresh, because
+# the monitor shares one login with the substitute it watches for. SFE answers
+# HTTP 400 while a second session is active on the account, and the evidence that
+# this is what the 400s are is diurnal: across the monitor's first ~59 hours, all
+# 34 of them landed between 06:00 and midnight, with none in three nights of
+# overnight polling. He sees the same conflict from his side, as jobs that only
+# appear after a manual refresh.
 #
-# It costs up to 40s of extra notice on a listing that can be gone in minutes, so
-# this is a trade, not a free win. Do not go lower while the login is shared.
+# 45s buys up to 15s of extra notice on a listing that can be gone in minutes and
+# pays for it in collisions: a third more polls means a third more chances to land
+# while he is on the site. That is the accepted trade, not a free win. Do not go
+# below 45s while the login is shared.
 variable "jeffco_poll_interval_sec" {
   description = "Seconds between jeffco available-jobs polls."
   type        = number
-  default     = 60
+  default     = 45
 }
 
 # 07:00 America/Denver — same reasoning as melanzana's: early enough to read over

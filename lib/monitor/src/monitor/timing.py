@@ -1,6 +1,6 @@
 """Poll-cadence arithmetic.
 
-A wrong credential retried on the poll cadence is ~1,440 attempts a day. If the
+A wrong credential retried on the poll cadence is ~1,920 attempts a day. If the
 account belongs to a real person, that can cost them access to the thing the
 monitor exists to watch. Any authenticated source needs a failure ceiling, not
 just backoff — and this module deliberately does not provide one, because only

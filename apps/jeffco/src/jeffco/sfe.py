@@ -42,7 +42,7 @@ TOKEN_REFRESH_MARGIN_SEC = 120
 #: After this many consecutive login failures the client stops trying for
 #: LOGIN_BACKOFF_SEC. This is not politeness -- SFE plausibly locks an account
 #: after repeated failures, and the account belongs to a working substitute. A
-#: wrong PIN retried on the poll cadence is ~1440 attempts a day, which could
+#: wrong PIN retried on the poll cadence is ~1920 attempts a day, which could
 #: cost dad the ability to pick up work at all. Three tries, then one attempt
 #: an hour; the stall alert is what surfaces it.
 MAX_LOGIN_FAILURES = 3

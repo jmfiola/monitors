@@ -163,7 +163,7 @@ def load_runner_config(
     default_state_path: str = "/data/state.json",
 ) -> RunnerConfig:
     """Read the shared names. The poll interval's default is per-app: melanzana
-    polls every 10s, jeffco every 60s because it shares a login with a person."""
+    polls every 10s, jeffco every 45s because it shares a login with a person."""
     status_raw = _raw(env, "STATUS_WEBHOOK_URL")
     return RunnerConfig(
         alert_webhook_url=env_https_url(

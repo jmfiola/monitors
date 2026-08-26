@@ -11,7 +11,7 @@ The other half is library-owned and already covered elsewhere:
     melanzana's test_the_library_validation_is_actually_wired_in.
 
 What's left -- SFE_USER_ID/SFE_PIN (fields the library has never heard of), the
-HS_SCHOOLS union semantics, the pinned timezone, and the 60s default -- is
+HS_SCHOOLS union semantics, the pinned timezone, and the 45s default -- is
 app-specific and ported below.
 """
 
@@ -28,7 +28,7 @@ def test_applies_every_default_when_only_the_required_vars_are_provided() -> Non
     cfg = load_config(BASE)
     assert cfg.window_days == 180
     assert cfg.timezone == "America/Denver"
-    assert cfg.runner.poll_interval_sec == 60
+    assert cfg.runner.poll_interval_sec == 45
     assert cfg.runner.poll_jitter_pct == 20
     assert cfg.runner.state_path == "/data/state.json"
     assert cfg.runner.heartbeat_interval_sec == 86400
@@ -93,12 +93,12 @@ def test_hs_schools_does_not_double_count_an_existing_school() -> None:
     assert len(cfg.hs_schools) == len(DEFAULT_HS_SCHOOLS)
 
 
-def test_the_poll_interval_defaults_to_sixty_not_ten() -> None:
-    # Deliberately slower than the official web client's own 30s refresh: the
-    # monitor shares one login with the substitute it watches for, and a poll in
-    # flight while he is on the site draws an HTTP 400 on one side or a stale
-    # listing on the other. Do not lower this while the login is shared.
-    assert load_config(BASE).runner.poll_interval_sec == 60
+def test_the_poll_interval_defaults_to_forty_five_not_ten() -> None:
+    # Still slower than the official web client's own 30s refresh: the monitor
+    # shares one login with the substitute it watches for, and a poll in flight
+    # while he is on the site draws an HTTP 400 on one side or a stale listing on
+    # the other. Do not lower this further while the login is shared.
+    assert load_config(BASE).runner.poll_interval_sec == 45
 
 
 def test_the_zone_is_not_read_from_the_environment() -> None:
