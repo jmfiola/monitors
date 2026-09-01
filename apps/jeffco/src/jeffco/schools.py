@@ -9,8 +9,14 @@ appears in his feed is inert — as is a misspelled one. Omitting a school costs
 a real job. Add on suspicion; do not wait for confirmation.
 
 The first 16 came from the account holder with their district codes (the codes
-are not in the API — see the spec). The last 6 are the district's remaining
+are not in the API — see the spec). The next 6 are the district's remaining
 comprehensive high schools, spelled from general knowledge, not from SFE.
+
+The last one is SFE's own spelling. SFE reports the Jefferson Academy campus the
+account holder works at as a bare "JEFFERSON ACADEMY", which matches neither
+"JEFFERSON ACADEMY SENIOR" nor the pattern — so his jobs there were filtered out
+and appeared only in the heartbeat's gap report. It is listed under the spelling
+the API actually sends, because that is the string the filter compares.
 """
 
 from __future__ import annotations
@@ -44,6 +50,7 @@ DEFAULT_HS_SCHOOLS: tuple[str, ...] = (
     "DAKOTA RIDGE HIGH SCHOOL",
     "GREEN MOUNTAIN HIGH SCHOOL",
     "JEFFERSON JUNIOR/SENIOR",
+    "JEFFERSON ACADEMY",
 )
 
 #: Longest-first so "SENIOR HIGH SCHOOL" folds in one step rather than leaving a

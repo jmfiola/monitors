@@ -15,10 +15,10 @@ from jeffco.types import Job
 ALLOW = parse_school_list("\n".join(DEFAULT_HS_SCHOOLS))
 NONE: set[str] = set()
 
-# The two campuses whose names say nothing about grade level. Everything else in
+# The campuses whose names say nothing about grade level. Everything else in
 # the built-in list is reachable by the pattern alone -- which is the property
 # worth testing, because it is what covers schools nobody enumerated.
-LIST_ONLY = ["DORAL ACADEMY OF COLORADO", "WARREN TECH NORTH"]
+LIST_ONLY = ["DORAL ACADEMY OF COLORADO", "WARREN TECH NORTH", "JEFFERSON ACADEMY"]
 PATTERN_COVERED = [n for n in DEFAULT_HS_SCHOOLS if n not in LIST_ONLY]
 
 FIXTURE: Any = json.loads(
@@ -115,9 +115,19 @@ def test_matches_with_the_list_emptied(name: str) -> None:
 
 def test_matches_a_high_school_nobody_enumerated() -> None:
     # The whole point of the pattern. If this breaks, every Jeffco high school
-    # outside the 22 hardcoded names goes silently unalerted.
+    # outside the hardcoded names goes silently unalerted.
     assert is_high_school("SOMEWHERE NEW HIGH SCHOOL", NONE) is True
     assert is_high_school("Somewhere New Sr High", NONE) is True
+
+
+def test_matches_sfes_bare_spelling_of_the_jefferson_academy_campus() -> None:
+    # Observed in production: SFE sends a bare "JEFFERSON ACADEMY", which the
+    # pattern cannot reach (no HS / SENIOR / JR SR token) and which is not the
+    # same string as the listed "JEFFERSON ACADEMY SENIOR". The account holder
+    # works at this campus, so before it was listed his jobs there were dropped
+    # and surfaced only as a name in the heartbeat's gap report.
+    assert is_high_school("JEFFERSON ACADEMY", NONE) is False
+    assert is_high_school("JEFFERSON ACADEMY", ALLOW) is True
 
 
 def test_matches_the_two_schools_confirmed_against_the_live_api() -> None:
@@ -242,14 +252,22 @@ def test_partition_returns_raw_unmatched_spellings_sorted_and_deduplicated() -> 
     assert unmatched == ["Bar Middle", "LITTLE ELE"]
 
 
-# The two schools whose names say nothing about grade level. This is the entire
+# The schools whose names say nothing about grade level. This is the entire
 # justification for the allow-list existing alongside the pattern — and it is a real
 # assertion, unlike checking the shipped list against an allow-list derived from
 # itself, which is true by construction and passes even with the pattern destroyed.
-NEEDS_THE_ALLOW_LIST = {"DORAL ACADEMY OF COLORADO", "WARREN TECH NORTH"}
+#
+# JEFFERSON ACADEMY is the one that arrived from production rather than from a
+# roster: SFE sends it bare, so neither the pattern nor the longer "JEFFERSON
+# ACADEMY SENIOR" entry reached it and the account holder's jobs there were dropped.
+NEEDS_THE_ALLOW_LIST = {
+    "DORAL ACADEMY OF COLORADO",
+    "WARREN TECH NORTH",
+    "JEFFERSON ACADEMY",
+}
 
 
-def test_exactly_two_shipped_schools_need_the_allow_list() -> None:
+def test_exactly_the_shipped_pattern_blind_schools_need_the_allow_list() -> None:
     by_pattern = {n for n in DEFAULT_HS_SCHOOLS if is_high_school(n, set())}
     needs_list = set(DEFAULT_HS_SCHOOLS) - by_pattern
     assert needs_list == NEEDS_THE_ALLOW_LIST
