@@ -119,6 +119,17 @@ class RunnerConfig:
     stall_alert_sec: int
     labels: OpsLabels
     log_prefix: str
+    #: The deployed image tag, so the app's own startup line answers "which version
+    #: is running?" without correlating it against the container supervisor's
+    #: `container start (image=…)` line.
+    #:
+    #: Terraform supplies it from the same `var.apps` entry that builds the image
+    #: URI, so it cannot disagree with the image actually running. Deliberately NOT
+    #: read from package metadata: every app's pyproject says 2.0.0 while v2.2.0 is
+    #: deployed, and a version that is confidently wrong is worse than one that is
+    #: absent. `unknown` is therefore the honest default, and seeing it in
+    #: production means that host's env file predates this field.
+    app_version: str = "unknown"
     max_backoff_sec: float = MAX_BACKOFF_SEC
     # Gap between the messages of one batch. Discord allows roughly five requests
     # per two seconds per webhook — so 0.35s leaves almost no margin, and a 429 is
@@ -180,4 +191,5 @@ def load_runner_config(
         stall_alert_sec=int(env_num(env, "STALL_ALERT_SEC", 600)),
         labels=labels,
         log_prefix=log_prefix,
+        app_version=env_str(env, "APP_VERSION", "unknown"),
     )

@@ -315,7 +315,8 @@ async def run_forever[Item](
 
     health = init_health(now_unix())
     emit(
-        f"started — interval={cfg.poll_interval_sec}s jitter={cfg.poll_jitter_pct}% "
+        f"started — version={cfg.app_version} "
+        f"interval={cfg.poll_interval_sec}s jitter={cfg.poll_jitter_pct}% "
         f"firstRun={first_run} "
         f"statusChannel={'separate' if cfg.status_webhook_url else 'main'} "
         f"heartbeat={cfg.heartbeat_interval_sec}s "

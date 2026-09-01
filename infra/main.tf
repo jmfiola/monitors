@@ -101,8 +101,15 @@ locals {
   # "  SFE_PIN=x" defines a variable named "  SFE_PIN" — a failure that presents
   # as a rejected credential. The same reasoning applies to the unit files, whose
   # `[Section]` headers must start at column zero.
+  # APP_VERSION is merged in here rather than repeated in each app_env map above:
+  # one place, and a newly added app inherits it, so adding an app stays a
+  # three-line tfvars diff. It comes from the same var.apps entry that builds
+  # local.images[k], which is what makes the version an app logs at startup
+  # unable to disagree with the image it is running.
   env_b64 = {
-    for k, env in local.app_env : k => base64encode(join("\n", [for ek, ev in env : "${ek}=${ev}"]))
+    for k, env in local.app_env : k => base64encode(join("\n", [
+      for ek, ev in merge(env, { APP_VERSION = var.apps[k].image_tag }) : "${ek}=${ev}"
+    ]))
   }
 
   units_b64 = {

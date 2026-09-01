@@ -99,6 +99,46 @@ async def test_the_loop_baselines_then_alerts_and_persists(tmp_path: Path) -> No
     assert harness.slept == [10, 10]  # jitter 0 => exactly the interval
 
 
+async def test_the_startup_line_names_the_deployed_version(tmp_path: Path) -> None:
+    # The whole point of the field: this line is what answers "which version is
+    # running?" from the app's own logs, instead of correlating it against the
+    # container supervisor's separate `container start (image=…)` line.
+    harness = Harness()
+    await run_forever(
+        ScriptedMonitor([[Thing("a")]]),
+        cfg_for(tmp_path / "state.json", APP_VERSION="v2.3.0"),
+        poster=harness.poster,
+        sleep=harness.sleep,
+        now_unix=harness.now,
+        rand=lambda: 0.5,
+        log=harness.logged.append,
+        max_ticks=1,
+    )
+    started = next(line for line in harness.logged if line.startswith("started —"))
+    assert "version=v2.3.0" in started
+
+
+async def test_the_startup_line_says_unknown_rather_than_inventing_a_version(
+    tmp_path: Path,
+) -> None:
+    # An absent version must read as absent. The alternative that looks tidier --
+    # falling back to the package version -- prints 2.0.0 for every app while
+    # something else entirely is deployed.
+    harness = Harness()
+    await run_forever(
+        ScriptedMonitor([[Thing("a")]]),
+        cfg_for(tmp_path / "state.json"),
+        poster=harness.poster,
+        sleep=harness.sleep,
+        now_unix=harness.now,
+        rand=lambda: 0.5,
+        log=harness.logged.append,
+        max_ticks=1,
+    )
+    started = next(line for line in harness.logged if line.startswith("started —"))
+    assert "version=unknown" in started
+
+
 async def test_a_supplied_state_is_used_instead_of_reloading_the_file(tmp_path: Path) -> None:
     state = tmp_path / "state.json"
     state.write_text('["disk-only"]', encoding="utf-8")

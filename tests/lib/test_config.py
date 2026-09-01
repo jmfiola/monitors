@@ -132,6 +132,9 @@ def test_load_runner_config_applies_defaults() -> None:
     assert cfg.post_spacing_sec == 0.35
     assert cfg.labels is LABELS
     assert cfg.log_prefix == "x-monitor"
+    # Not "dev", and not read from package metadata: an absent version must read as
+    # absent. Seeing this in production means the host's env file predates the field.
+    assert cfg.app_version == "unknown"
 
 
 def test_load_runner_config_reads_every_shared_name() -> None:
@@ -145,6 +148,7 @@ def test_load_runner_config_reads_every_shared_name() -> None:
             "HEARTBEAT_INTERVAL_SEC": "3600",
             "HEARTBEAT_AT": "07:00",
             "STALL_ALERT_SEC": "120",
+            "APP_VERSION": "v9.9.9",
         },
         labels=LABELS,
         log_prefix="x-monitor",
@@ -157,6 +161,7 @@ def test_load_runner_config_reads_every_shared_name() -> None:
     assert cfg.heartbeat_interval_sec == 3600
     assert cfg.heartbeat_at == (7, 0)
     assert cfg.stall_alert_sec == 120
+    assert cfg.app_version == "v9.9.9"
 
 
 def test_load_runner_config_requires_an_https_alert_webhook() -> None:

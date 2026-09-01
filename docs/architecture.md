@@ -278,12 +278,20 @@ clock, not the watched site's.
 ## Configuration
 
 The library reads `DISCORD_WEBHOOK_URL`, `STATUS_WEBHOOK_URL`, `STATE_PATH`,
-`POLL_INTERVAL_SEC`, `POLL_JITTER_PCT`, `HEARTBEAT_INTERVAL_SEC`, `HEARTBEAT_AT`, and
-`STALL_ALERT_SEC`. Each app adds its own on top — jeffco `SFE_USER_ID`, `SFE_PIN`,
+`POLL_INTERVAL_SEC`, `POLL_JITTER_PCT`, `HEARTBEAT_INTERVAL_SEC`, `HEARTBEAT_AT`,
+`STALL_ALERT_SEC`, and `APP_VERSION`. Each app adds its own on top — jeffco
+`SFE_USER_ID`, `SFE_PIN`,
 `HS_SCHOOLS`, `WINDOW_DAYS`; melanzana its calendar id and `MENTION_EVERYONE`.
 FashionJobs adds only operational settings: its webhook, state path, 600-second poll
 interval, shared 20 percent jitter, and `07:00` heartbeat. Stage, France, all roles,
 and no keywords remain fixed in code.
+
+`APP_VERSION` is not hand-written anywhere: `infra/main.tf` merges it into every app's
+env file from the same `var.apps` entry that builds the image URI, so the version an
+app logs at startup cannot disagree with the image it is running. It is not read from
+package metadata for the same reason — every app's `pyproject.toml` version tracks the
+package, not the deployment, so it would report a confidently wrong number. Unset, it
+reads `unknown`, which is what an env file predating the field looks like.
 
 `busy_stall_alert_sec` and `HTTP_TIMEOUT_SEC` are code constants, not env vars,
 because nothing has yet needed to change them per environment. A variable nothing
