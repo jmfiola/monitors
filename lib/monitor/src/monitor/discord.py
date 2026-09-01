@@ -99,6 +99,25 @@ async def post(url: str, payload: Payload, client: HttpClient) -> None:
 _DEFAULT_HEARTBEAT_EXTRAS = HeartbeatExtras()
 
 
+def _when(unix: int) -> str:
+    """An instant, rendered so it stays true after the message ages.
+
+    Discord computes `<t:U:R>` — "2 minutes ago" — on the READER's clock at the
+    moment they look, not at the moment it was posted. Ops messages persist in a
+    channel and get scrolled back to, so a bare relative timestamp silently
+    rewrites itself: a heartbeat that correctly said "last successful poll a few
+    seconds ago" when it arrived reads "last successful poll 4 days ago" when it is
+    read four days later. That is indistinguishable from a monitor that has been
+    dead for four days, and it has already caused exactly that alarm.
+
+    `<t:U:f>` is absolute and still localizes to the reader's timezone, so pairing
+    the two keeps the at-a-glance freshness while leaving the fact recoverable.
+    Collapsing this back to `<t:U:R>` alone looks like a tidy-up and reintroduces
+    the misreport.
+    """
+    return f"<t:{unix}:f> (<t:{unix}:R>)"
+
+
 def format_heartbeat(
     labels: OpsLabels,
     state: HealthState,
@@ -107,7 +126,8 @@ def format_heartbeat(
 ) -> Payload:
     """Heartbeat ops message — confirms the monitor is alive. Never pings.
 
-    `<t:UNIX:R>` renders as Discord-native relative time ("2 hours ago").
+    Timestamps render as absolute-with-relative, `<t:U:f> (<t:U:R>)`, not bare
+    `<t:U:R>` — see `_when` for why the tidier-looking version misreports.
 
     `extras.footer_text` wins over the default when the app sets one: jeffco's
     heartbeat lists the schools its filter did not recognise and replaces the footer
@@ -121,7 +141,7 @@ def format_heartbeat(
                 description=(
                     f"Up {uptime_hours}h · tracking {state.items_tracked} "
                     f"{labels.tracked_noun} · last successful poll "
-                    f"<t:{state.last_success_unix}:R>."
+                    f"{_when(state.last_success_unix)}."
                 ),
                 color=BLUE,
                 # None, not (), when the app adds nothing: an empty tuple would
@@ -148,7 +168,7 @@ def format_status_alert(
                 Embed(
                     title=f"⚠️ {labels.name} — no successful poll",
                     description=(
-                        f"No successful poll since <t:{state.last_success_unix}:R>. "
+                        f"No successful poll since {_when(state.last_success_unix)}. "
                         f"Every attempt since then reported the source busy, which "
                         f"usually means the account is in use elsewhere — so this is "
                         f"probably someone working, not an outage. Still retrying; "
@@ -165,7 +185,7 @@ def format_status_alert(
                 Embed(
                     title=f"⚠️ {labels.name} — no successful poll",
                     description=(
-                        f"No successful poll since <t:{state.last_success_unix}:R> "
+                        f"No successful poll since {_when(state.last_success_unix)} "
                         f"({state.consecutive_failures} consecutive failures). "
                         f"Still retrying; you'll get one more message when it recovers."
                     ),
@@ -178,7 +198,7 @@ def format_status_alert(
         embeds=(
             Embed(
                 title=f"✅ {labels.name} — recovered",
-                description=f"Polling succeeded again <t:{now_unix}:R>. Back to normal.",
+                description=f"Polling succeeded again at {_when(now_unix)}. Back to normal.",
                 color=GREEN,
                 footer_text="Liveness alert.",
             ),

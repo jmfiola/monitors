@@ -24,13 +24,23 @@ from monitor.types import GREEN, Embed, Field, HeartbeatExtras, Message, Payload
 from jeffco.sfe import AVAILABLE_JOBS_URL
 from jeffco.types import Job
 
-#: Unmatched school names listed in the heartbeat before it summarizes the
-#: rest. Not a style choice: a Discord embed field value is capped at 1024
+#: How many characters the unmatched-school list may spend before it summarizes
+#: the rest. Not a style choice: a Discord embed field value is capped at 1024
 #: characters, and the gap list accumulates over the process lifetime, so an
 #: uncapped list would eventually make Discord reject the entire heartbeat --
 #: turning the message that proves the monitor is alive into one that never
 #: arrives.
-MAX_GAP_NAMES = 10
+#:
+#: A character budget rather than a name count, because characters are the actual
+#: limit. The previous fixed count of 10 spent about a fifth of the available
+#: field on names roughly 20 characters long and hid the remainder behind
+#: "…and N more", which someone then has to go and ask about.
+GAP_VALUE_BUDGET = 1000
+
+#: Held back from GAP_VALUE_BUDGET for the "• …and N more" line. Reserved rather
+#: than measured because that line's length depends on how many names are hidden,
+#: which is not known until the split has already been chosen.
+_GAP_SUMMARY_RESERVE = 24
 
 
 def _describe(job: Job, date_line: str) -> str:
@@ -80,22 +90,45 @@ def format_job_alerts(alerts: Sequence[tuple[Job, str]]) -> list[Message]:
     ]
 
 
-def heartbeat_extras_for(unmatched: Sequence[str]) -> HeartbeatExtras:
+def heartbeat_extras_for(
+    unmatched: Sequence[str], budget: int = GAP_VALUE_BUDGET
+) -> HeartbeatExtras:
     """The filter-gap report riding on the next heartbeat.
 
     Carries the school names the High-School filter did not recognise, which
     turns the filter-gap report into something that arrives on its own instead
     of needing someone to go looking for it. Empty when there is nothing to
     report, which keeps the library's own default heartbeat footer.
+
+    `budget` is lowered by tests so truncation can be exercised on a handful of
+    names instead of a sixty-name fixture. Production always uses the default.
     """
     if not unmatched:
         return HeartbeatExtras()
 
+    # Filled newest-first and then flipped back to discovery order for display.
     # Newest, not first: this list accumulates for the life of the process, so
-    # slicing from the front would give the first ten names ever seen
+    # spending the budget from the front would give the earliest names ever seen
     # permanent ownership of every slot, and a newly discovered campus would
     # never appear.
-    listed = list(unmatched[-MAX_GAP_NAMES:])
+    spendable = budget - _GAP_SUMMARY_RESERVE
+    listed: list[str] = []
+    used = 0
+    for name in reversed(unmatched):
+        # +3 for the "• " prefix and the newline joining it to the previous line.
+        # Over-counting by one on the first line is deliberate slack.
+        cost = len(name) + 3
+        if used + cost > spendable:
+            break
+        listed.append(name)
+        used += cost
+    listed.reverse()
+
+    if not listed:
+        # One name longer than the entire budget. Show it clipped rather than
+        # emitting a field whose only content is a summary of what is missing.
+        listed = [unmatched[-1][:spendable]]
+
     rest = len(unmatched) - len(listed)
     value = "\n".join(f"• {name}" for name in listed)
     if rest > 0:

@@ -114,8 +114,17 @@ class JeffcoMonitor:
         return format_approximate(job, self._cfg.timezone)
 
     def heartbeat_extras(self) -> HeartbeatExtras:
-        """The filter-gap report, oldest-seen first -- see `_unmatched_seen`."""
-        return heartbeat_extras_for(list(self._unmatched_seen))
+        """The filter-gap report, oldest-seen first -- see `_unmatched_seen`.
+
+        Logs the whole accumulated list alongside it. The report itself is bounded
+        by Discord's field cap, so once it starts summarizing "…and N more" the log
+        is the only place the hidden names exist -- and each name's own first-sight
+        line in `fetch` may be days of log history behind by then.
+        """
+        names = list(self._unmatched_seen)
+        if names:
+            self._log(f"filter gap: {len(names)} unmatched — {', '.join(names)}")
+        return heartbeat_extras_for(names)
 
 
 if TYPE_CHECKING:  # a compile-time assertion, no runtime cost, no fake arguments

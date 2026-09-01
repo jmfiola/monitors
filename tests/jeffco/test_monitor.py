@@ -148,17 +148,21 @@ async def test_gaps_accumulate_across_ticks_rather_than_being_replaced() -> None
 
 
 async def test_a_newly_discovered_school_reaches_a_report_the_old_ones_already_filled() -> None:
-    # `heartbeat_extras_for` keeps the last MAX_GAP_NAMES entries, so the order
+    # `heartbeat_extras_for` fills its budget from the newest end, so the order
     # `_unmatched_seen` hands them over decides who a reader ever sees. Insertion
-    # order makes that "the most recently discovered"; sorting it would make it
-    # "the alphabetically last", and a new campus early in the alphabet would then
-    # never appear once ten gaps had accumulated. Sorting here reads like a tidy-up
-    # and is what this test exists to prevent.
+    # order makes the survivor "the most recently discovered"; sorting it would make
+    # it "the alphabetically last", and a new campus early in the alphabet would
+    # then never appear once the report had filled up. Sorting here reads like a
+    # tidy-up and is what this test exists to prevent.
+    #
+    # The order is asserted directly rather than through truncation: the budget is
+    # wide enough to show all of these, so a test that relied on something being
+    # squeezed out would prove nothing about the ordering it cares about.
     #
     # Only the CROSS-TICK order is pinned. Within one tick `partition_jobs` returns
     # a sorted set, and that is fine: every name in one response was discovered at
     # the same instant, so there is no "newer" among them to preserve.
-    full = [f"{letter} MIDDLE SCHOOL" for letter in "QRSTUVWXYZ"]  # exactly ten
+    full = [f"{letter} MIDDLE SCHOOL" for letter in "QRSTUVWXYZ"]
     monitor, client = make_monitor(
         [
             *_login_responses(),
@@ -173,10 +177,9 @@ async def test_a_newly_discovered_school_reaches_a_report_the_old_ones_already_f
         await monitor.fetch()
     extras = monitor.heartbeat_extras()
     assert extras.fields is not None
-    value = extras.fields[0].value
-    assert "A BRAND NEW MIDDLE SCHOOL" in value
-    assert "Q MIDDLE SCHOOL" not in value  # pushed out to make room
-    assert "…and 1 more" in value
+    listed = [line.removeprefix("• ") for line in extras.fields[0].value.splitlines()]
+    assert listed[0] == "Q MIDDLE SCHOOL"  # discovered first, still first
+    assert listed[-1] == "A BRAND NEW MIDDLE SCHOOL"  # sorts first, discovered last
 
 
 async def test_sfe_400_becomes_source_busy_so_the_runner_holds_cadence() -> None:

@@ -223,38 +223,62 @@ def test_omits_the_gap_field_entirely_when_every_school_matched() -> None:
 
 def test_truncates_a_long_gap_list_so_discord_cannot_reject_the_whole_heartbeat() -> None:
     # A field value is capped at 1024 characters, and the caller accumulates gap
-    # names for the life of the process -- so without the cap this eventually
-    # 400s the one message whose job is to prove the monitor is alive. The kept
-    # slice is the newest MAX_GAP_NAMES (see the dedicated slice-direction test
-    # below), so the last name survives truncation and the first does not.
-    many = [f"CAMPUS NUMBER {i} MIDDLE SCHOOL" for i in range(25)]
+    # names for the life of the process -- so without the budget this eventually
+    # 400s the one message whose job is to prove the monitor is alive. Run at the
+    # production budget, with enough names to overrun it.
+    many = [f"CAMPUS NUMBER {i:03d} MIDDLE SCHOOL" for i in range(60)]
     extras = heartbeat_extras_for(many)
     assert extras.fields is not None
     value = extras.fields[0].value
-    assert "CAMPUS NUMBER 24 MIDDLE SCHOOL" in value
-    assert "CAMPUS NUMBER 0 MIDDLE SCHOOL" not in value
-    assert "…and 15 more" in value
+    assert "CAMPUS NUMBER 059 MIDDLE SCHOOL" in value  # newest survives
+    assert "CAMPUS NUMBER 000 MIDDLE SCHOOL" not in value  # oldest aged out
+    assert "…and " in value
     assert len(value) < 1024
 
 
-def test_keeps_the_newest_names_not_the_first_ten_seen() -> None:
+def test_spends_the_whole_budget_rather_than_a_fixed_count_of_names() -> None:
+    # The old fixed count of 10 hid everything past the tenth name while using
+    # about a fifth of the field. Names this length must now fill it: 25 of them
+    # is well inside 1000 characters, so none should be summarized away.
+    many = [f"CAMPUS NUMBER {i:03d} MIDDLE SCHOOL" for i in range(25)]
+    extras = heartbeat_extras_for(many)
+    assert extras.fields is not None
+    value = extras.fields[0].value
+    assert "…and " not in value
+    assert value.count("•") == 25
+
+
+def test_keeps_the_newest_names_not_the_first_seen() -> None:
     # unmatched accumulates in discovery order for the life of the process, so
-    # slicing from the front would give the first ten names permanent ownership
-    # of every slot and a later campus would never appear. Distinct letters
-    # (not a numbered sequence) so no name is a substring of another -- a
-    # numbered "CAMPUS 1" / "CAMPUS 12" pair would let a wrong slice pass this
-    # assertion by accident.
+    # spending the budget from the front would give the earliest names permanent
+    # ownership of every slot and a later campus would never appear. Distinct
+    # words (not a numbered sequence) so no name is a substring of another -- a
+    # numbered "CAMPUS 1" / "CAMPUS 12" pair would let a wrong split pass this
+    # assertion by accident. A tiny budget fits three of these, so the direction
+    # of the split is what decides which three.
     letters = [
         "ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO", "FOXTROT", "GOLF", "HOTEL",
         "INDIA", "JULIETT", "KILO", "LIMA",
     ]  # fmt: skip
     names = [f"{letter} SCHOOL" for letter in letters]
-    extras = heartbeat_extras_for(names)
+    extras = heartbeat_extras_for(names, budget=24 + 3 * len("JULIETT SCHOOL") + 9)
     assert extras.fields is not None
     value = extras.fields[0].value
     assert "LIMA SCHOOL" in value  # the 12th, newest
     assert "ALPHA SCHOOL" not in value  # the 1st, should have aged out
-    assert "…and 2 more" in value
+    assert "…and 9 more" in value
+
+
+def test_shows_a_single_oversized_name_clipped_instead_of_only_a_summary() -> None:
+    # Degenerate but reachable: one name wider than the whole budget. Emitting a
+    # field whose only content is "…and 1 more" would report a gap while naming
+    # nothing, which is a report that cannot be acted on.
+    extras = heartbeat_extras_for(["X" * 400, "Y" * 400], budget=120)
+    assert extras.fields is not None
+    value = extras.fields[0].value
+    assert value.startswith("• YYY")
+    assert "…and 1 more" in value
+    assert len(value) < 1024
 
 
 def test_gaps_swap_the_footer_for_the_instruction() -> None:

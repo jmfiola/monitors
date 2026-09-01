@@ -122,19 +122,51 @@ something real, and the only batch large enough to matter comes from a deliberat
 
 ## 7. The filter-gap report keeps the *newest* names
 
-`apps/jeffco/src/jeffco/alert.py` slices `unmatched[-MAX_GAP_NAMES:]`; `monitor.py` holds
-`_unmatched_seen` as an **insertion-ordered** `dict`, not a set, and does not sort it.
+`apps/jeffco/src/jeffco/alert.py` fills `GAP_VALUE_BUDGET` from the newest end of
+`unmatched`; `monitor.py` holds `_unmatched_seen` as an **insertion-ordered** `dict`, not
+a set, and does not sort it.
 
-The list accumulates for the process lifetime. Sorting it, or slicing from the front,
-gives the first names ever seen permanent ownership of every visible slot — so a newly
-discovered campus never appears, and the report quietly stops doing its job.
+The list accumulates for the process lifetime. Sorting it, or spending the budget from
+the front, gives the first names ever seen permanent ownership of every visible slot — so
+a newly discovered campus never appears, and the report quietly stops doing its job.
 
-`MAX_GAP_NAMES = 10` is not styling: an embed field value is capped at 1024 characters,
-so an uncapped accumulating list eventually makes Discord reject the **whole heartbeat**,
-turning the message that proves the monitor is alive into one that never arrives.
+`GAP_VALUE_BUDGET = 1000` is not styling: an embed field value is capped at 1024
+characters, so an unbounded accumulating list eventually makes Discord reject the **whole
+heartbeat**, turning the message that proves the monitor is alive into one that never
+arrives. It is a character budget rather than a name count because characters are the
+actual limit — the earlier fixed count of 10 used a fifth of the field and hid the rest
+behind "…and N more", which someone then had to ask about.
 
-- `test_keeps_the_newest_names_not_the_first_ten_seen`
+The report also names at least one school even when a single name is wider than the whole
+budget. A field containing nothing but "…and 1 more" reports a gap while naming nothing,
+which cannot be acted on.
+
+`monitor.heartbeat_extras` logs the full accumulated list every time it builds the report,
+because once the budget is exceeded the log is the only place the hidden names exist.
+
+- `test_keeps_the_newest_names_not_the_first_seen`
+- `test_spends_the_whole_budget_rather_than_a_fixed_count_of_names`
+- `test_shows_a_single_oversized_name_clipped_instead_of_only_a_summary`
 - `test_a_newly_discovered_school_reaches_a_report_the_old_ones_already_filled`
+
+## 7a. An ops timestamp is absolute as well as relative
+
+`lib/monitor/src/monitor/discord.py` — `_when` renders every instant as
+`<t:U:f> (<t:U:R>)`. The bare `<t:U:R>` it replaced looks tidier and is wrong.
+
+Discord resolves `:R` on the **reader's** clock at the moment they look, not when the
+message was posted, and ops messages persist in a channel to be scrolled back to. So a
+heartbeat carrying only a relative timestamp rewrites itself as it ages: one that
+correctly said "last successful poll a few seconds ago" on arrival reads "last successful
+poll 4 days ago" four days later. That is indistinguishable from a monitor that has been
+dead for four days, and it has already produced exactly that false alarm — three healthy
+heartbeats read as a multi-day outage.
+
+`:f` is absolute and still localizes to the reader's timezone, so the pair keeps
+at-a-glance freshness without letting the message become untrue. All four ops messages are
+covered, because the collapse-back would land on whichever one a later edit touched.
+
+- `test_every_ops_timestamp_is_absolute_as_well_as_relative`
 
 ## 8. One failed detail fetch degrades one job
 
@@ -381,9 +413,9 @@ pairing turns an upstream title such as `@everyone` into a channel-wide ping.
 
 ## The parity harness
 
-`tools/parity-diff.sh` renders every Discord payload both implementations can produce, on
-a frozen clock, and requires an empty diff. Three properties make that meaningful, and all
-three are easy to destroy:
+`tools/parity-diff.sh` renders the **item-alert** Discord payloads both implementations can
+produce, on a frozen clock, and requires an empty diff. Three properties make that
+meaningful, and all three are easy to destroy:
 
 “Both implementations” means only the Melanzana and Jeffco Python/TypeScript pairs.
 FashionJobs has no sibling TypeScript implementation and must not be added to this
@@ -393,14 +425,20 @@ harness; its committed fixtures and Python tests own that scope.
 is an *input* — item fields, epochs, clock integers, fixture names — or an import from
 production code. Every rendered byte comes from each language's own production functions.
 The moment a case hardcodes what it expects, it stops comparing implementations and starts
-comparing a constant to itself. `LABELS` is *imported* rather than restated, so even config
-wording drift is caught.
+comparing a constant to itself.
 
 **Deliberate divergences must never be added as cases.** Where the two implementations are
 *meant* to differ, a case can only be a tautology or a permanent diff, and a permanent diff
 destroys the meaning of an empty one. Currently excluded on purpose:
 
-- **No busy case.** The reference implementation has no busy Discord payload at all.
+- **No ops messages.** The heartbeat, the filter-gap report, and the liveness alerts left
+  parity scope when Python became the source of truth for them: its timestamps are
+  absolute-with-relative (see 7a) and its gap report spends a character budget (see 7). Both
+  are deliberate divergences from the TypeScript, so comparing them could only yield a
+  permanent diff. This retired the busy case's older, narrower exclusion along with the
+  rest, and it costs something: `LABELS` used to be *imported* by the dump scripts, so the
+  harness caught drift in the ops wording too. It no longer does — the label assertions in
+  `tests/jeffco/test_alert.py` and `tests/lib/test_discord.py` hold that now.
 - **No shape-valid impossible date** (e.g. `2026-02-30`). `Date.parse` rolls it over to
   March 2 and renders a plausible wrong day; Python raises and degrades. `not-a-date` is
   used instead, which *both* reject, so both degrade and the bytes match. Do not
@@ -416,8 +454,13 @@ looks like a bug and is what makes the two implementations agree — both treat 
 datetime as local. Forcing UTC would *create* a divergence. Real SFE always sends `Z`.
 
 The harness must be able to fail. It has been broken on purpose by changing the en dash to
-a hyphen, reversing per-job message order, and changing `MAX_GAP_NAMES` — each gives a
-non-empty diff and a non-zero exit. If you change it, re-prove that.
+a hyphen and by reversing per-job message order — each gives a non-empty diff and a
+non-zero exit. If you change it, re-prove that. Re-proved after `drop_retired` was added:
+with the en dash mutated to a hyphen the harness still exits non-zero, so filtering the
+retired ops cases out of both sides does not blunt it for the cases that remain.
+
+(The third historical example, changing `MAX_GAP_NAMES`, no longer applies — that constant
+is gone and the gap report it shaped is one of the retired cases.)
 
 ---
 

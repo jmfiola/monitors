@@ -25,15 +25,18 @@ looks like a port regression and is really a serializer difference. The directio
 at least fail-safe: Node can never emit `3.0`, so it fails loudly rather than
 silently matching.
 
-**There is deliberately no busy case**, though the brief's numbering left room for
-one at 9 (death and recovery take 9 and 10 here instead). The TypeScript has no
-busy Discord payload at all -- its only stall message is the death branch -- so a
-busy case could only be built by having the TypeScript fabricate the Python
-library's new wording, which prints one literal twice and proves nothing, or by
-accepting a permanent diff, which would destroy the meaning of an empty one. The
-busy outcome is a *deliberate* divergence, and a parity harness must exclude
-deliberate divergences to stay readable as pass/fail. It is covered instead by
-tests/lib/test_discord.py.
+**The ops messages are deliberately out of scope**, which is why the cases stop at
+6. The heartbeat, its filter-gap report, and the liveness alerts have all diverged
+from the TypeScript on purpose: Python is the source of truth for them now, its
+timestamps are absolute-with-relative rather than bare relative, and its gap report
+spends a character budget instead of a fixed ten names. Comparing them could only
+produce a permanent diff, and a permanent diff destroys the meaning of an empty
+one -- the same reason the busy payload was never a case here. They are covered by
+tests/lib/test_discord.py and tests/jeffco/test_alert.py instead.
+
+What that costs: LABELS was previously *imported* here rather than restated, so
+this harness caught drift in the ops wording too. It no longer does; the label
+assertions in tests/jeffco/test_alert.py are what hold it.
 
 Case 5 calls format_approximate directly rather than simulating a failed detail
 fetch: this compares *rendering*, and a mocked failure would go through
@@ -45,17 +48,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from jeffco.alert import format_job_alerts, heartbeat_extras_for
-from jeffco.config import LABELS
+from jeffco.alert import format_job_alerts
 from jeffco.dates import format_approximate, format_job_days, parse_job_days
 from jeffco.sfe import parse_jobs
 from jeffco.types import Job, JobDay
-from monitor.discord import format_heartbeat, format_status_alert
-from monitor.health import init_health
 
 #: The district and the API both run in Denver time; jeffco.config pins the same
 #: value rather than reading it from the environment.
@@ -71,13 +70,6 @@ DETAIL_BY_JOB_ID = {
     1025535: "job-detail-multiday",
     1025543: "job-detail-contiguous",
 }
-
-#: Frozen clock for the ops messages. Same literals as melanzana's harness: uptime
-#: is (4600 - 1000) // 3600 == 1h, so a rounding change would show up.
-STARTED_UNIX = 1000
-HEARTBEAT_NOW = 1000 + 3600
-DEATH_NOW = 2000
-RECOVERY_NOW = 2100
 
 #: The fixture's two-day job happens to run the same hours on both days, so it takes
 #: the uniform branch. These synthetic days take the other one -- each day carrying
@@ -136,11 +128,6 @@ BROKEN_DATE_JOB = Job(
     duration_type="HALF DAY AM",
 )
 
-#: 14 names, so the heartbeat lists the newest 10 and summarizes 4. Generated
-#: rather than transcribed: the numbering makes "newest, not first" visible in the
-#: output, and there is no 14-name literal to mistype on one side only.
-UNMATCHED_SCHOOLS = [f"CAMPUS {i:02d} MIDDLE SCHOOL" for i in range(1, 15)]
-
 
 def _fixture(name: str) -> object:
     return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
@@ -168,11 +155,6 @@ def build() -> dict[str, Any]:
     contiguous = by_id[1025543]
     multiday = by_id[1025535]
 
-    heartbeat_state = replace(init_health(STARTED_UNIX), items_tracked=7, last_success_unix=1500)
-    death_state = replace(
-        init_health(STARTED_UNIX), last_success_unix=STARTED_UNIX, consecutive_failures=4
-    )
-
     return {
         "1-single-day": _payloads([(single, _date_line(single))]),
         "2-contiguous": _payloads([(contiguous, _date_line(contiguous))]),
@@ -191,16 +173,6 @@ def build() -> dict[str, Any]:
             ]
         ),
         "6-dst-span": _payloads([(DST_JOB, format_job_days(DST_DAYS, TIMEZONE))]),
-        "7-heartbeat-clean": format_heartbeat(
-            LABELS, heartbeat_state, HEARTBEAT_NOW, heartbeat_extras_for([])
-        ).to_dict(),
-        "8-heartbeat-gaps": format_heartbeat(
-            LABELS, heartbeat_state, HEARTBEAT_NOW, heartbeat_extras_for(UNMATCHED_SCHOOLS)
-        ).to_dict(),
-        "9-death": format_status_alert("death", LABELS, death_state, DEATH_NOW).to_dict(),
-        "10-recovery": format_status_alert(
-            "recovery", LABELS, init_health(STARTED_UNIX), RECOVERY_NOW
-        ).to_dict(),
     }
 
 

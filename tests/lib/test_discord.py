@@ -1,3 +1,4 @@
+import re
 from dataclasses import replace
 
 import httpx
@@ -95,6 +96,32 @@ async def test_post_error_never_contains_the_webhook_url() -> None:
     assert "secret-path" not in str(exc.value)
 
 
+def test_every_ops_timestamp_is_absolute_as_well_as_relative() -> None:
+    # Discord resolves `:R` on the READER's clock at the moment they look, not when
+    # the message was posted, and ops messages persist in a channel to be scrolled
+    # back to. A heartbeat carrying only `<t:U:R>` therefore rewrites itself as it
+    # ages: one that correctly said "last successful poll a few seconds ago" on
+    # arrival reads "4 days ago" four days later, which is indistinguishable from a
+    # monitor that has been dead for four days. It has already raised that alarm
+    # once. Every instant must ship its absolute form alongside the relative one;
+    # collapsing back to `:R` alone looks like a tidy-up and is the regression this
+    # pins. Covers all four ops messages, because the tidy-up would hit whichever
+    # one a future edit happened to touch.
+    state = replace(init_health(1000), items_tracked=7, last_success_unix=1500)
+    descriptions = [
+        format_heartbeat(LABELS, state, 4600).embeds[0].description,
+        format_status_alert("death", LABELS, state, 2000).embeds[0].description,
+        format_status_alert("busy", LABELS, state, 5000).embeds[0].description,
+        format_status_alert("recovery", LABELS, state, 2100).embeds[0].description,
+    ]
+    for description in descriptions:
+        assert description is not None
+        relative = re.findall(r"<t:(\d+):R>", description)
+        assert relative, f"no timestamp at all in: {description}"
+        for unix in relative:
+            assert f"<t:{unix}:f>" in description, description
+
+
 def test_heartbeat_matches_melanzanas_wording_and_never_pings() -> None:
     state = replace(init_health(1000), items_tracked=7, last_success_unix=1500)
     payload = format_heartbeat(LABELS, state, 1000 + 3600)
@@ -102,7 +129,9 @@ def test_heartbeat_matches_melanzanas_wording_and_never_pings() -> None:
     assert payload.allowed_mentions_parse is None
     embed = payload.embeds[0]
     assert embed.title == "💚 Melanzana monitor — still watching"
-    assert embed.description == ("Up 1h · tracking 7 slot(s) · last successful poll <t:1500:R>.")
+    assert embed.description == (
+        "Up 1h · tracking 7 slot(s) · last successful poll <t:1500:f> (<t:1500:R>)."
+    )
     assert embed.color == BLUE
     assert embed.footer_text == "Routine heartbeat — no action needed."
     # No fields key at all when the app has nothing to add — matches the
@@ -159,7 +188,7 @@ def test_death_alert_matches_melanzanas_wording_and_never_pings() -> None:
     embed = payload.embeds[0]
     assert embed.title == "⚠️ Melanzana monitor — no successful poll"
     assert embed.description == (
-        "No successful poll since <t:1000:R> (4 consecutive failures). "
+        "No successful poll since <t:1000:f> (<t:1000:R>) (4 consecutive failures). "
         "Still retrying; you'll get one more message when it recovers."
     )
     assert embed.color == RED
@@ -190,6 +219,8 @@ def test_recovery_alert_matches_melanzanas_wording_and_never_pings() -> None:
     assert payload.allowed_mentions_parse is None
     embed = payload.embeds[0]
     assert embed.title == "✅ Melanzana monitor — recovered"
-    assert embed.description == "Polling succeeded again <t:2100:R>. Back to normal."
+    assert embed.description == (
+        "Polling succeeded again at <t:2100:f> (<t:2100:R>). Back to normal."
+    )
     assert embed.color == GREEN
     assert embed.footer_text == "Liveness alert."
