@@ -103,8 +103,8 @@ page-1 requests per hour, any pages required by newly advancing frontiers, plus 
 one declared full walk daily and one per restart. Failed required scans add retries.
 
 ```bash
-./deploy.sh --plan      # plan only
-./deploy.sh --verify    # verify only, change nothing
+just infra-plan      # plan only
+just infra-verify    # verify only, change nothing
 ```
 
 ## First-time setup
@@ -199,10 +199,10 @@ Every container's stdout lands in one `cos_containers` log, so the Logs Explorer
 interleaves them. `logs.sh` applies the right filter:
 
 ```bash
-./logs.sh jeffco                            # newest 50 in the last hour
-./logs.sh melanzana --freshness=6h
-./logs.sh fashionjobs --freshness=6h
-./logs.sh jeffco --limit=200 --order=asc    # oldest first
+just logs jeffco                            # newest 50 in the last hour
+just logs melanzana --freshness=6h
+just logs fashionjobs --freshness=6h
+just logs jeffco --limit=200 --order=asc    # oldest first
 ```
 
 Timestamps render in Denver time. This reaches further back than `docker logs`,

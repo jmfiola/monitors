@@ -18,7 +18,7 @@ the deploy — otherwise the startup script finds no image.
 1. `apps/<app>/pyproject.toml` — copy melanzana's. Name it `<app>`; depend on
    `monitor` (`{ workspace = true }`) plus whatever HTTP client the source needs.
 2. Root `pyproject.toml` — add `apps/<app>` to `[tool.uv.workspace] members`.
-3. `uv sync` — regenerates `uv.lock`. The Dockerfile needs the lock committed.
+3. `just setup` — regenerates `uv.lock`. The Dockerfile needs the lock committed.
 4. `apps/<app>/src/<app>/` — `types.py`, the source client, `alert.py`,
    `config.py`, `monitor.py`, `main.py`. Copy melanzana's `main.py` and change the
    two constructor calls; it is the one file that is meant to be per-app, because
@@ -50,7 +50,7 @@ the deploy — otherwise the startup script finds no image.
     ```
 12. `./infra/deploy.sh` — applies, re-runs the startup script, verifies. Never a
     bare `terraform apply`.
-13. Check the first log lines: `./infra/logs.sh <app> --freshness=10m`.
+13. Check the first log lines: `just logs <app> --freshness=10m`.
 
 ## The three things that fail quietly
 
