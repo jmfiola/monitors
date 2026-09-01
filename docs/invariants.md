@@ -455,12 +455,9 @@ datetime as local. Forcing UTC would *create* a divergence. Real SFE always send
 
 The harness must be able to fail. It has been broken on purpose by changing the en dash to
 a hyphen and by reversing per-job message order — each gives a non-empty diff and a
-non-zero exit. If you change it, re-prove that. Re-proved after `drop_retired` was added:
-with the en dash mutated to a hyphen the harness still exits non-zero, so filtering the
-retired ops cases out of both sides does not blunt it for the cases that remain.
-
-(The third historical example, changing `MAX_GAP_NAMES`, no longer applies — that constant
-is gone and the gap report it shaped is one of the retired cases.)
+non-zero exit. If you change it, re-prove that. `drop_retired` has been re-proved this
+way: with the en dash mutated to a hyphen the harness still exits non-zero, so filtering
+the retired ops cases out of both sides does not blunt it for the cases that remain.
 
 ---
 

@@ -139,49 +139,31 @@ root. The image name and tag come from `apps.auto.tfvars`:
 ```bash
 REGION=us-west1
 PROJECT=cobs-cloud
+TAG=<tag>
 gcloud auth configure-docker "$REGION-docker.pkg.dev"
 
-for app in melanzana jeffco fashionjobs; do
-  # image name and tag must match this app's entry in apps.auto.tfvars
-  IMAGE="$REGION-docker.pkg.dev/$PROJECT/$app/<image>:<tag>"
-  docker build --platform linux/amd64 --build-arg "APP=$app" -t "$IMAGE" .
+# Each pair is <app>:<image>, matching that app's entry in apps.auto.tfvars.
+for pair in melanzana:melanzana-monitor jeffco:jeffco-sub-monitor \
+            fashionjobs:fashionjobs-monitor; do
+  IMAGE="$REGION-docker.pkg.dev/$PROJECT/${pair%%:*}/${pair##*:}:$TAG"
+  docker build --platform linux/amd64 --build-arg "APP=${pair%%:*}" -t "$IMAGE" .
   docker push "$IMAGE"
 done
 ```
 
-### FashionJobs rollout status
+Push before bumping the tag in `apps.auto.tfvars`, then `./infra/deploy.sh` — a tag
+the registry does not have yet leaves the startup script with no image to pull.
 
-The first FashionJobs `v2.1.0` rollout proved the production GCE egress path and
-Discord webhook, then failed closed because the live page omitted optional localized
-timestamp display text while retaining the required absolute `data-value`. A
-one-page `v2.1.1` smoke then failed closed because titled recruitment links surround
-and otherwise overwrite the real job link. `v2.1.2` passed its focused smoke, but its
-first baseline exposed the promoted/final-page pagination shape. All published images
-remain immutable; `v2.1.3` remains undeployed after its structural smoke exposed
-identical responsive pagination anchors. `v2.1.4` contained the focused pagination
-fix, but its first baseline failed closed, before state or alerts, on a structurally
-present but blank location. `v2.1.5` permits that blank location text while retaining
-the required metadata slot. Its production rollout completed a 42-page baseline,
-persisted 1,242 unique identities, and sent no first-run alerts; it is the deployed
-predecessor. `v2.1.6` keeps the fixed publication date while removing Discord's
-changing relative-time suffix and the redundant FashionJobs France footer. Its
-rollout retained the baseline, delivered one newly observed listing, and persisted
-1,243 unique identities. `v2.1.7` omits the generic alert description while preserving
-every job-specific field. Its rollout retained the baseline, completed a successful
-poll with 1,246 identities, and restarted only FashionJobs. `v2.1.8` dropped the
-FashionJobs card timestamp from alerts entirely, rolled out, and delivered listings
-without it. `v2.1.9` restores the `Published` field with Discord's fixed absolute style
-alongside its live relative style. Its rollout retained the baseline, completed a full
-startup scan, delivered six newly observed listings, and persisted 1,257 unique
-identities; it is the deployed tag declared in `apps.auto.tfvars`.
+### Which tag is deployed
 
-From the repository root, the FashionJobs image step is:
+`infra/apps.auto.tfvars` is the answer, and it is committed so git records it. All
+three apps carry the same tag: `lib/monitor` is baked into every image, so a library
+change is only live in the apps that were rebuilt for it, and rolling one app forward
+alone leaves the others on the old behaviour.
 
-```bash
-IMAGE="us-west1-docker.pkg.dev/cobs-cloud/fashionjobs/fashionjobs-monitor:v2.1.9"
-docker build --platform linux/amd64 --build-arg APP=fashionjobs -t "$IMAGE" .
-docker push "$IMAGE"
-```
+Published images are immutable. Rolling back is the tag edit in reverse — never a
+rebuild of an already-published tag, which would make "which version is running?"
+unanswerable.
 
 The verified request profile is the app's configured `Accept: text/html` and
 `User-Agent: fashionjobs-monitor/2.0`; an unrepresentative default-httpx probe was
@@ -237,7 +219,7 @@ OR
 ```
 
 Interleaved, that reads as the deploy narrative: `SIGTERM received` → `container start
-(image=…:v2.0.2)` → `app config` → `started … firstRun=False`.
+(image=…:<tag>)` → `app config` → `started … firstRun=False`.
 
 Two details bite. **The container name and the image name differ for jeffco** — container
 `jeffco-monitor`, image `jeffco-sub-monitor` — so the two halves cannot share one string.

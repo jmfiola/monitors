@@ -334,28 +334,11 @@ leaving capacity for the OS, Docker, logging, and normal bursts. Between its
 ten-minute polls it adds only an idle Python process and small HTTP/HTML identity
 state; there is no browser, database, inbound listener, or worker.
 
-Melanzana and Jeffco remain on `v2.0.2`. The first FashionJobs `v2.1.0` rollout
-proved GCE egress and Discord delivery but exposed that the localized timestamp
-display text can be empty even though the absolute `data-value` is present. A
-one-page `v2.1.1` smoke then exposed titled recruitment links surrounding the real
-job link. `v2.1.2` passed its focused smoke, but its first baseline exposed the
-promoted/final-page pagination shape. All published images remain immutable;
-`v2.1.3` remains undeployed after its structural smoke exposed identical responsive
-pagination anchors. `v2.1.4` contained the focused pagination fix, but its first
-baseline failed closed, before state or alerts, on a structurally present but blank
-location. `v2.1.5` preserves the required location slot while allowing blank text
-and omitting the unavailable field from Discord alerts. Its production rollout
-completed a 42-page baseline, persisted 1,242 unique identities, and sent no
-first-run alerts. `v2.1.6` keeps the fixed publication date while removing Discord's
-changing relative-time suffix and the redundant FashionJobs France footer. Its
-rollout retained the baseline, delivered one newly observed listing, and persisted
-1,243 unique identities. `v2.1.7` omits the generic alert description while
-preserving every job-specific field. Its rollout retained the baseline, completed a
-successful poll with 1,246 identities, and restarted only FashionJobs. `v2.1.8`
-dropped the card timestamp from alerts entirely and ran in production for five hours.
-`v2.1.9` restores `Published` with both the fixed absolute and the live relative
-Discord styles. Its rollout retained the baseline, completed a full startup scan,
-delivered six newly observed listings, and persisted 1,257 unique identities.
+All three apps run the same tag, because `lib/monitor` is baked into every image: a
+library change has to be rebuilt and rolled out everywhere, or the apps that were
+not rebuilt keep the old behaviour. `infra/apps.auto.tfvars` is committed, so git
+records which tag is deployed. Published images are immutable — rolling back is a
+tag edit in reverse, never a rebuild of the same tag.
 
 Deploy with `./infra/deploy.sh` — never a bare `terraform apply`, which is half a
 deploy that looks complete. Details in [`infra/README.md`](../infra/README.md).
