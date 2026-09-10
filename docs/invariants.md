@@ -253,7 +253,43 @@ do not.
 
 - `test_explicit_date_tables_ignore_lc_time_when_strftime_does_not`
 
-## 14. FashionJobs' product filter is fixed and proven from every HTML page
+## 14. Jeffco automatic acceptance is exact, bounded, and app-owned
+
+`apps/jeffco/src/jeffco/auto_accept.py` / `monitor.py` / `sfe.py` / `alert.py`
+
+Jeffco partitions the available jobs through the existing high-school filter before
+the app-owned auto-accepter sees them. It completes any mutation and turns the result
+into an app-owned outcome item before `fetch()` returns. The shared `Monitor` protocol
+and runner know only about item keys and messages; no action state belongs there.
+
+- Eligibility is exact and fails closed. The duration must be exactly `FULL`, the
+  job's Denver date must be at least seven days away, and the normalized school must
+  be one of `RALSTON VALLEY HS`, `GOLDEN HS`, or `ARVADA WEST HS`. Malformed data and
+  every other high school are ineligible.
+  - `test_only_the_three_normalized_target_schools_qualify`
+  - `test_other_high_schools_do_not_qualify`
+- Each actual continuous visibility episode gets at most one bounded three-attempt
+  sequence. A job must disappear before a later appearance can begin a new episode.
+  - `test_three_transient_failures_produce_one_failed_outcome`
+- Every terminal failed logical PUT is followed by assignment verification before
+  another mutation or a failed outcome. The public SPA request shape is fixed, and a
+  one-time 401 reauthentication stays inside the same logical attempt.
+  - `test_ambiguous_failure_is_success_when_assignment_is_visible`
+  - `test_accepts_a_job_with_the_public_spas_exact_request_shape`
+- Discord follows the acceptance decision and never precedes or delays the mutation.
+  Acceptance outcomes use their own confirmation rendering.
+  - `test_formats_an_automatic_acceptance_confirmation`
+- Ordinary job keys and acceptance-outcome keys occupy namespaces that cannot
+  collide.
+  - `test_outcome_key_is_distinct_from_a_previously_seen_job_id`
+- The existing single-send-funnel and login-lockout invariants still apply to every
+  automatic acceptance request.
+- Automatic acceptance stays on the old read-only path unless
+  `AUTO_ACCEPT_ENABLED` is explicitly true. Missing, false, and unknown values remain
+  disabled.
+  - `test_auto_accept_is_disabled_by_default`
+
+## 15. FashionJobs' product filter is fixed and proven from every HTML page
 
 `apps/fashionjobs/src/fashionjobs/site.py`
 
@@ -299,7 +335,7 @@ route or conflicting pair of supported job links fails the card.
 - `test_a_complete_contract_filter_leak_fails_instead_of_looking_empty`
 - `test_a_malformed_card_fails_instead_of_being_skipped`
 
-## 15. FashionJobs pagination commits one monotonic identity transaction
+## 16. FashionJobs pagination commits one monotonic identity transaction
 
 `apps/fashionjobs/src/fashionjobs/site.py`
 
@@ -351,7 +387,7 @@ non-HTML body is a source error rather than parser input.
 - `test_duplicate_ids_keep_the_direct_emploi_url`
 - `test_non_html_response_raises_an_error`
 
-## 16. FashionJobs state and degraded items fail closed without blocking valid alerts
+## 17. FashionJobs state and degraded items fail closed without blocking valid alerts
 
 `apps/fashionjobs/src/fashionjobs/state.py` / `monitor.py` / `runner.py`
 
@@ -390,7 +426,7 @@ IDs and every later unattempted ID are unsettled and withheld for the next tick.
 - `test_placeholder_only_batch_is_loudly_uncovered_without_raising`
 - `test_real_source_posts_one_new_job_without_duplicating_retained_ids`
 
-## 17. FashionJobs source text cannot create a Discord mention
+## 18. FashionJobs source text cannot create a Discord mention
 
 `apps/fashionjobs/src/fashionjobs/alert.py`
 

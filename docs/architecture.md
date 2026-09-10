@@ -27,7 +27,9 @@ apps/melanzana/src/melanzana/     apps/jeffco/src/jeffco/
 ├── types.py                      ├── types.py     Job, JobDay
 ├── cowlendar.py  source client   ├── sfe.py       source client + auth
 ├── detector.py   month + slot    ├── schools.py   the high-school filter
-│                 selection       ├── dates.py     day/time labels
+│                 selection       ├── auto_accept.py eligibility, visibility,
+│                                 │                retries, and outcomes
+│                                 ├── dates.py     day/time labels
 ├── alert.py      day-card embed  ├── alert.py     one message per job
 ├── config.py                     ├── config.py
 ├── monitor.py    the 4 methods   ├── monitor.py   the 4 methods
@@ -64,6 +66,10 @@ accumulated filter-gap set.
 diff, because the list response cannot express a job that runs Friday and the
 following Monday. Enrichment is therefore necessarily post-diff.
 
+Jeffco's `fetch` implementation also owns automatic acceptance. It performs that
+mutation after its high-school partition and before it returns app-owned items. The
+`Monitor` protocol and shared runner remain unaware that an action occurred.
+
 **`Message.covers`** names the item keys a message announces. jeffco and FashionJobs
 post one message per job or listing, so when a single post fails the runner must
 know which keys to withhold. melanzana's one message covers every fresh key, so
@@ -86,7 +92,7 @@ transport and retry classification, the status-webhook fallback, inter-message
 spacing, post-failure withholding, and key de-duplication.
 
 **The app owns** its source client, its key function, its alert rendering, its
-filtering, and any authentication.
+filtering, any source mutation, and any authentication.
 
 The shared Discord client surface is a structural `Protocol`, not a concrete
 HTTP-client type or dependency. The library owns one copy of Discord delivery and
@@ -112,6 +118,26 @@ Two things are outside the library on purpose:
 `run_forever(monitor, cfg)` loads state, fetches, keys, diffs, suppresses on first
 run, renders, posts with spacing, saves, folds the outcome into health, emits
 heartbeat and liveness messages, then sleeps with jitter or backs off.
+
+### Jeffco automatic acceptance stays inside the app
+
+Jeffco performs its mutation inside the app-owned `fetch` path. Its order is:
+
+```text
+available jobs
+  -> existing high-school partition
+  -> exact three-school/full-day/seven-day predicate
+  -> bounded PUT + assignment verification
+  -> outcome-specific key
+  -> existing runner diff/render/Discord delivery
+```
+
+The eligible schools are the normalized forms of `RALSTON VALLEY HS`, `GOLDEN HS`,
+and `ARVADA WEST HS`; the duration must be exactly `FULL`, and the job's Denver date
+must be at least seven days away. Malformed data fails closed. The acceptance decision
+and mutation finish before the runner can diff, render, or deliver Discord messages,
+so Discord follows the outcome and cannot delay the PUT. With automatic acceptance
+disabled, this path is the old read-only fetch behavior.
 
 ### FashionJobs reads are transactional and monotonic
 
