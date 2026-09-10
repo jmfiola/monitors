@@ -103,17 +103,13 @@ class AutoAccepter:
 
     async def reconcile(self, jobs: Sequence[Job]) -> list[JeffcoItem]:
         now = self._now_unix()
-        eligible = {
-            candidate.job_id
-            for candidate in jobs
-            if is_auto_accept_eligible(candidate, now, self._timezone)
-        }
+        visible = {candidate.job_id for candidate in jobs}
         self._decisions = {
-            job_id: decision for job_id, decision in self._decisions.items() if job_id in eligible
+            job_id: decision for job_id, decision in self._decisions.items() if job_id in visible
         }
         reconciled: list[JeffcoItem] = []
         for candidate in jobs:
-            if candidate.job_id not in eligible:
+            if not is_auto_accept_eligible(candidate, now, self._timezone):
                 reconciled.append(candidate)
                 continue
             decision = self._decisions.get(candidate.job_id)

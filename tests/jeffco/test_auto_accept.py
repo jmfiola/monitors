@@ -223,6 +223,20 @@ async def test_continuously_visible_job_reuses_the_cached_decision() -> None:
     assert client.accepted_ids == [101]
 
 
+async def test_temporarily_ineligible_visible_job_keeps_cached_decision() -> None:
+    client = FakeAcceptanceClient([None, None])
+    accepter = make_accepter(client)
+    eligible = job()
+    temporarily_ineligible = job(location_name="WHEAT RIDGE HIGH SCHOOL")
+
+    await accepter.reconcile([eligible])
+    [ordinary] = await accepter.reconcile([temporarily_ineligible])
+    await accepter.reconcile([eligible])
+
+    assert ordinary is temporarily_ineligible
+    assert client.accepted_ids == [101]
+
+
 async def test_disappearance_then_return_starts_a_new_sequence() -> None:
     client = FakeAcceptanceClient([None, None])
     accepter = make_accepter(client)
@@ -247,6 +261,19 @@ async def test_ineligible_job_passes_through_without_network_calls() -> None:
     [result] = await make_accepter(client).reconcile([candidate])
     assert result is candidate
     assert client.accepted_ids == []
+
+
+async def test_ineligible_duplicate_id_passes_through_unchanged() -> None:
+    ordinary = job(location_name="WHEAT RIDGE HIGH SCHOOL")
+    eligible = job()
+    client = FakeAcceptanceClient([None])
+
+    results = await make_accepter(client).reconcile([ordinary, eligible])
+
+    assert results[0] is ordinary
+    assert isinstance(results[1], AutoAcceptItem)
+    assert results[1].job is eligible
+    assert client.accepted_ids == [101]
 
 
 async def test_reconcile_preserves_mixed_input_order() -> None:
