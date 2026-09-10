@@ -92,6 +92,10 @@ def json_response(body: object, status: int = 200) -> httpx.Response:
     )
 
 
+def empty_response(status: int = 204) -> httpx.Response:
+    return httpx.Response(status)
+
+
 def redirect(location: str, cookies: Sequence[str] = (), status: int = 302) -> httpx.Response:
     headers = [("location", location)]
     headers.extend(("set-cookie", cookie) for cookie in cookies)
@@ -605,6 +609,73 @@ async def test_fetches_job_detail_by_id() -> None:
     assert len(detail["jobDetails"]) == 2
     assert h.calls[-1].url == f"{SFE_BASE}/api/job/1025535"
     assert h.calls[-1].method == "GET"
+
+
+# --- job acceptance ----------------------------------------------------------
+
+
+async def test_accepts_a_job_with_the_public_spas_exact_request_shape() -> None:
+    async with client([*login_responses(), empty_response()]) as h:
+        await h.sfe.accept_job(1025535)
+
+    call = h.calls[-1]
+    assert call.method == "PUT"
+    assert call.url == f"{SFE_BASE}/api/jobAssignment/1025535"
+    assert call.body == ""
+    assert call.headers["authorization"].startswith("Bearer eyJ")
+
+
+async def test_acceptance_ignores_empty_and_json_success_bodies() -> None:
+    async with client(
+        [*login_responses(), json_response({"ignored": True}), empty_response()]
+    ) as h:
+        await h.sfe.accept_job(1)
+        await h.sfe.accept_job(2)
+    assert [call.method for call in h.calls[-2:]] == ["PUT", "PUT"]
+
+
+async def test_acceptance_reauthenticates_once_after_401() -> None:
+    async with client(
+        [
+            *login_responses(),
+            json_response({"secret": "do-not-log"}, 401),
+            *login_responses(),
+            empty_response(),
+        ]
+    ) as h:
+        await h.sfe.accept_job(1025535)
+    puts = [call for call in h.calls if "/api/jobAssignment/" in call.url]
+    assert len(puts) == 2
+    assert h.logins == 2
+
+
+async def test_assignment_verification_uses_the_active_assignment_endpoint() -> None:
+    async with client([*login_responses(), json_response({"jobId": 1025535})]) as h:
+        assert await h.sfe.has_job_assignment(1025535) is True
+    assert h.calls[-1].method == "GET"
+    assert h.calls[-1].url == f"{SFE_BASE}/api/jobAssignment/1025535"
+
+
+async def test_assignment_verification_treats_404_as_not_assigned() -> None:
+    async with client([*login_responses(), json_response({"secret": "hidden"}, 404)]) as h:
+        assert await h.sfe.has_job_assignment(1025535) is False
+
+
+async def test_acceptance_error_never_quotes_the_response_body() -> None:
+    async with client([*login_responses(), json_response({"message": "PRIVATE BODY"}, 400)]) as h:
+        with pytest.raises(SfeHttpError, match="HTTP 400") as exc:
+            await h.sfe.accept_job(1025535)
+    assert "PRIVATE BODY" not in str(exc.value)
+
+
+async def test_acceptance_html_error_does_not_leak_a_session_id() -> None:
+    page = f'<html><form action="/x;jsessionid={SESSION_SENTINEL}">'
+    async with client([*login_responses(), html(page, 500)]) as h:
+        with pytest.raises(SfeShapeError, match=r"(?i)html") as exc:
+            await h.sfe.accept_job(1025535)
+    rendered = "\n".join([str(exc.value), repr(exc.value)])
+    assert SESSION_SENTINEL not in rendered
+    assert "jsessionid" not in rendered
 
 
 # --- the credential sweep ----------------------------------------------------

@@ -556,18 +556,17 @@ class SfeClient:
 
     # --- authenticated requests ---------------------------------------------
 
-    async def _api_request(
+    async def _authenticated_response(
         self,
         path: str,
         method: str,
         json_body: object | None,
         label: str,
+        *,
         allow_retry: bool = True,
-    ) -> object:
-        """One authenticated API request, with exactly one re-login and retry on
-        401. A second 401 raises, so a credential problem fails the tick and
-        enters backoff instead of becoming a login hammer.
-        """
+        include_api_message: bool = True,
+    ) -> httpx.Response:
+        """Send an authenticated request, retrying a 401 once after re-login."""
         await self._ensure_token()
         response = await self._send(
             method,
@@ -581,17 +580,47 @@ class SfeClient:
         if response.status_code == 401 and allow_retry:
             self._log(f"{label}: 401, re-authenticating once and retrying")
             self._token = None
-            return await self._api_request(path, method, json_body, label, allow_retry=False)
+            return await self._authenticated_response(
+                path,
+                method,
+                json_body,
+                label,
+                allow_retry=False,
+                include_api_message=include_api_message,
+            )
 
         # Before the status check, so an HTML error page is reported as HTML
         # rather than having its markup mined for a message.
         _assert_not_html(text, response.headers.get("content-type"), label, response.status_code)
 
         if not response.is_success:
+            detail = _api_message(text) if include_api_message else ""
             raise SfeHttpError(
                 response.status_code,
-                f"SFE {label} failed: HTTP {response.status_code}{_api_message(text)}",
+                f"SFE {label} failed: HTTP {response.status_code}{detail}",
             )
+        return response
+
+    async def _api_request(
+        self,
+        path: str,
+        method: str,
+        json_body: object | None,
+        label: str,
+        allow_retry: bool = True,
+    ) -> object:
+        """One authenticated JSON API request, with exactly one re-login and
+        retry on 401. A second 401 raises, so a credential problem fails the
+        tick and enters backoff instead of becoming a login hammer.
+        """
+        response = await self._authenticated_response(
+            path,
+            method,
+            json_body,
+            label,
+            allow_retry=allow_retry,
+        )
+        text = response.text
 
         try:
             parsed: object = json.loads(text)
@@ -633,3 +662,27 @@ class SfeClient:
         renders a complete alert rather than failing.
         """
         return await self._api_request(f"/api/job/{job_id}", "GET", None, f"job detail {job_id}")
+
+    async def accept_job(self, job_id: int) -> None:
+        await self._authenticated_response(
+            f"/api/jobAssignment/{job_id}",
+            "PUT",
+            None,
+            f"job acceptance {job_id}",
+            include_api_message=False,
+        )
+
+    async def has_job_assignment(self, job_id: int) -> bool:
+        try:
+            await self._authenticated_response(
+                f"/api/jobAssignment/{job_id}",
+                "GET",
+                None,
+                f"job assignment verification {job_id}",
+                include_api_message=False,
+            )
+        except SfeHttpError as err:
+            if err.status == 404:
+                return False
+            raise
+        return True
