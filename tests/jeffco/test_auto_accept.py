@@ -1,18 +1,47 @@
+from collections.abc import Sequence
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import httpx
 import pytest
 from jeffco.auto_accept import (
+    AutoAccepter,
     AutoAcceptItem,
     AutoAcceptOutcome,
     AutoAcceptStatus,
     auto_accept_key,
     is_auto_accept_eligible,
 )
+from jeffco.sfe import SfeHttpError
 from jeffco.types import Job
 
 DENVER = "America/Denver"
 NOW = int(datetime(2026, 9, 10, 12, tzinfo=ZoneInfo(DENVER)).timestamp())
+
+
+class FakeAcceptanceClient:
+    def __init__(
+        self,
+        accepts: Sequence[Exception | None],
+        assignments: Sequence[Exception | bool] = (),
+    ) -> None:
+        self.accepts = list(accepts)
+        self.assignments = list(assignments)
+        self.accepted_ids: list[int] = []
+        self.verified_ids: list[int] = []
+
+    async def accept_job(self, job_id: int) -> None:
+        self.accepted_ids.append(job_id)
+        result = self.accepts.pop(0)
+        if isinstance(result, Exception):
+            raise result
+
+    async def has_job_assignment(self, job_id: int) -> bool:
+        self.verified_ids.append(job_id)
+        result = self.assignments.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
 
 
 def job(
@@ -28,6 +57,27 @@ def job(
         job_start=job_start,
         job_end=job_start,
         duration_type=duration_type,
+    )
+
+
+async def _record_sleep(values: list[float], seconds: float) -> None:
+    values.append(seconds)
+
+
+def make_accepter(
+    client: FakeAcceptanceClient,
+    *,
+    sleeps: list[float] | None = None,
+    logs: list[str] | None = None,
+) -> AutoAccepter:
+    sleep_calls = sleeps if sleeps is not None else []
+    log_lines = logs if logs is not None else []
+    return AutoAccepter(
+        client,
+        timezone=DENVER,
+        now_unix=lambda: NOW,
+        sleep=lambda seconds: _record_sleep(sleep_calls, seconds),
+        log=log_lines.append,
     )
 
 
@@ -93,3 +143,119 @@ def test_outcome_keys_cannot_collide_with_an_existing_job_id() -> None:
     assert auto_accept_key(accepted) == "auto-accepted:101"
     assert auto_accept_key(failed) == "auto-failed:101"
     assert auto_accept_key(accepted) != str(accepted.job.job_id)
+
+
+async def test_retries_transient_failures_at_one_and_three_seconds() -> None:
+    client = FakeAcceptanceClient(
+        [SfeHttpError(500, "HTTP 500"), SfeHttpError(429, "HTTP 429"), None],
+        [False, False],
+    )
+    sleeps: list[float] = []
+    accepter = AutoAccepter(
+        client,
+        timezone=DENVER,
+        now_unix=lambda: NOW,
+        sleep=lambda seconds: _record_sleep(sleeps, seconds),
+        log=lambda _: None,
+    )
+    [item] = await accepter.reconcile([job()])
+    assert isinstance(item, AutoAcceptItem)
+    assert item.outcome.status is AutoAcceptStatus.ACCEPTED
+    assert client.accepted_ids == [101, 101, 101]
+    assert client.verified_ids == [101, 101]
+    assert sleeps == [1.0, 3.0]
+
+
+async def test_ambiguous_failure_is_success_when_assignment_is_visible() -> None:
+    client = FakeAcceptanceClient([httpx.ReadTimeout("timed out")], [True])
+    accepter = make_accepter(client)
+    [item] = await accepter.reconcile([job()])
+    assert isinstance(item, AutoAcceptItem)
+    assert item.outcome.status is AutoAcceptStatus.ACCEPTED
+    assert client.accepted_ids == [101]
+
+
+async def test_permanent_4xx_verifies_then_stops_without_sleeping() -> None:
+    client = FakeAcceptanceClient([SfeHttpError(400, "private")], [False])
+    sleeps: list[float] = []
+    accepter = make_accepter(client, sleeps=sleeps)
+    [item] = await accepter.reconcile([job()])
+    assert isinstance(item, AutoAcceptItem)
+    assert item.outcome == AutoAcceptOutcome(AutoAcceptStatus.FAILED, "HTTP 400")
+    assert client.accepted_ids == [101]
+    assert sleeps == []
+
+
+async def test_three_transient_failures_produce_one_failed_outcome() -> None:
+    client = FakeAcceptanceClient(
+        [SfeHttpError(500, "x"), SfeHttpError(500, "y"), SfeHttpError(500, "z")],
+        [False, False, False],
+    )
+    sleeps: list[float] = []
+    [item] = await make_accepter(client, sleeps=sleeps).reconcile([job()])
+    assert isinstance(item, AutoAcceptItem)
+    assert item.outcome == AutoAcceptOutcome(AutoAcceptStatus.FAILED, "HTTP 500")
+    assert client.accepted_ids == [101, 101, 101]
+    assert client.verified_ids == [101, 101, 101]
+    assert sleeps == [1.0, 3.0]
+
+
+async def test_verification_error_is_sanitized_and_keeps_the_put_failure() -> None:
+    logs: list[str] = []
+    client = FakeAcceptanceClient(
+        [SfeHttpError(400, "PRIVATE PUT BODY")],
+        [RuntimeError("PRIVATE VERIFY BODY")],
+    )
+    [item] = await make_accepter(client, logs=logs).reconcile([job()])
+    assert isinstance(item, AutoAcceptItem)
+    assert item.outcome == AutoAcceptOutcome(AutoAcceptStatus.FAILED, "HTTP 400")
+    rendered = "\n".join(logs)
+    assert "PRIVATE" not in rendered
+    assert "RuntimeError" in rendered
+
+
+async def test_continuously_visible_job_reuses_the_cached_decision() -> None:
+    client = FakeAcceptanceClient([None])
+    accepter = make_accepter(client)
+    first = await accepter.reconcile([job()])
+    second = await accepter.reconcile([job()])
+    assert first == second
+    assert client.accepted_ids == [101]
+
+
+async def test_disappearance_then_return_starts_a_new_sequence() -> None:
+    client = FakeAcceptanceClient([None, None])
+    accepter = make_accepter(client)
+    await accepter.reconcile([job()])
+    assert await accepter.reconcile([]) == []
+    await accepter.reconcile([job()])
+    assert client.accepted_ids == [101, 101]
+
+
+async def test_fresh_reconciler_retries_a_current_job() -> None:
+    first = FakeAcceptanceClient([None])
+    second = FakeAcceptanceClient([None])
+    await make_accepter(first).reconcile([job()])
+    await make_accepter(second).reconcile([job()])
+    assert first.accepted_ids == [101]
+    assert second.accepted_ids == [101]
+
+
+async def test_ineligible_job_passes_through_without_network_calls() -> None:
+    candidate = job(location_name="WHEAT RIDGE HIGH SCHOOL")
+    client = FakeAcceptanceClient([])
+    [result] = await make_accepter(client).reconcile([candidate])
+    assert result is candidate
+    assert client.accepted_ids == []
+
+
+async def test_reconcile_preserves_mixed_input_order() -> None:
+    ordinary_a = job(job_id=1, location_name="WHEAT RIDGE HIGH SCHOOL")
+    eligible = job(job_id=2)
+    ordinary_b = job(job_id=3, location_name="LAKEWOOD HIGH SCHOOL")
+    client = FakeAcceptanceClient([None])
+    results = await make_accepter(client).reconcile([ordinary_a, eligible, ordinary_b])
+    assert results[0] is ordinary_a
+    assert isinstance(results[1], AutoAcceptItem)
+    assert results[1].job is eligible
+    assert results[2] is ordinary_b
