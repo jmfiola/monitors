@@ -19,8 +19,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from monitor.types import GREEN, Embed, Field, HeartbeatExtras, Message, Payload
+from monitor.types import GREEN, RED, Embed, Field, HeartbeatExtras, Message, Payload
 
+from jeffco.auto_accept import AutoAcceptItem, AutoAcceptStatus, auto_accept_key
 from jeffco.sfe import AVAILABLE_JOBS_URL
 from jeffco.types import Job
 
@@ -60,6 +61,33 @@ def _describe(job: Job, date_line: str) -> str:
     if job.duration_type and job.duration_type != "FULL":
         lines.append(f"**Duration:** {job.duration_type}")
     return "\n".join(lines)
+
+
+def format_auto_accept_alert(item: AutoAcceptItem, date_line: str) -> Message:
+    accepted = item.outcome.status is AutoAcceptStatus.ACCEPTED
+    status = "Automatically accepted" if accepted else "Auto-accept failed — claim manually"
+    lines = [f"**Status:** {status}", _describe(item.job, date_line)]
+    lines.append(f"**Job ID:** {item.job.job_id}")
+    if item.outcome.detail is not None:
+        lines.append(f"**Failure:** {item.outcome.detail}")
+    return Message(
+        payload=Payload(
+            embeds=(
+                Embed(
+                    title=f"🏫 {item.job.location_name}",
+                    url=AVAILABLE_JOBS_URL,
+                    description="\n".join(lines),
+                    color=GREEN if accepted else RED,
+                    footer_text=(
+                        "This job was accepted automatically."
+                        if accepted
+                        else "Tap the title and claim this job manually now."
+                    ),
+                ),
+            )
+        ),
+        covers=(auto_accept_key(item),),
+    )
 
 
 def format_job_alerts(alerts: Sequence[tuple[Job, str]]) -> list[Message]:

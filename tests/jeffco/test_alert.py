@@ -49,10 +49,11 @@ So 11 + 4 = 15 cases are ported below (as 16 functions, since the Duration case
 splits in two); the remaining 6 are already exercised in tests/lib/test_discord.py.
 """
 
-from jeffco.alert import format_job_alerts, heartbeat_extras_for
+from jeffco.alert import format_auto_accept_alert, format_job_alerts, heartbeat_extras_for
+from jeffco.auto_accept import AutoAcceptItem, AutoAcceptOutcome, AutoAcceptStatus
 from jeffco.sfe import AVAILABLE_JOBS_URL
 from jeffco.types import Job
-from monitor.types import GREEN
+from monitor.types import GREEN, RED
 
 DATE_LINE = "Fri Oct 16, 7:45 AM – 3:30 PM"  # noqa: RUF001 -- EN DASH, matches the real date line
 
@@ -76,6 +77,66 @@ def _job(
         employee_last_name=employee_last_name,
         duration_type=duration_type,
     )
+
+
+def test_formats_an_automatic_acceptance_confirmation() -> None:
+    item = AutoAcceptItem(
+        _job(
+            job_id=1025535,
+            location_name="RALSTON VALLEY HS",
+            classf_name="SEC MATH",
+            employee_first_name="Jamie",
+            employee_last_name="Placeholder",
+            duration_type="FULL",
+        ),
+        AutoAcceptOutcome(AutoAcceptStatus.ACCEPTED),
+    )
+    message = format_auto_accept_alert(item, DATE_LINE)
+    embed = message.payload.embeds[0]
+    assert embed.title == "🏫 RALSTON VALLEY HS"
+    assert embed.description == (
+        "**Status:** Automatically accepted\n"
+        "**Subject:** SEC MATH\n"
+        f"**Dates:** {DATE_LINE}\n"
+        "**Teacher:** Jamie Placeholder\n"
+        "**Job ID:** 1025535"
+    )
+    assert embed.color == GREEN
+    assert embed.url == AVAILABLE_JOBS_URL
+    assert embed.footer_text == "This job was accepted automatically."
+    assert message.covers == ("auto-accepted:1025535",)
+
+
+def test_formats_an_urgent_manual_claim_failure() -> None:
+    item = AutoAcceptItem(
+        _job(job_id=1025535, duration_type="FULL"),
+        AutoAcceptOutcome(AutoAcceptStatus.FAILED, "HTTP 400"),
+    )
+    message = format_auto_accept_alert(item, DATE_LINE)
+    embed = message.payload.embeds[0]
+    assert embed.description is not None
+    assert "**Status:** Auto-accept failed — claim manually" in embed.description
+    assert "**Failure:** HTTP 400" in embed.description
+    assert "**Job ID:** 1025535" in embed.description
+    assert embed.color == RED
+    assert embed.footer_text == "Tap the title and claim this job manually now."
+    assert message.covers == ("auto-failed:1025535",)
+
+
+def test_auto_accept_outcomes_never_ping_and_do_not_repeat_full_duration() -> None:
+    for outcome in (
+        AutoAcceptOutcome(AutoAcceptStatus.ACCEPTED),
+        AutoAcceptOutcome(AutoAcceptStatus.FAILED, "HTTP 400"),
+    ):
+        message = format_auto_accept_alert(
+            AutoAcceptItem(_job(duration_type="FULL"), outcome),
+            DATE_LINE,
+        )
+        assert message.payload.content is None
+        assert message.payload.allowed_mentions_parse is None
+        description = message.payload.embeds[0].description
+        assert description is not None
+        assert "Duration" not in description
 
 
 # --- format_job_alerts (discord.test.ts: describe('formatJobAlerts')) -------
