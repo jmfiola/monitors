@@ -29,7 +29,8 @@ from jeffco.config import load_config
 from jeffco.monitor import JeffcoMonitor
 from jeffco.sfe import SfeClient, SfeHttpError
 from jeffco.types import Job
-from monitor.types import SourceBusy
+from monitor.runner import run_tick
+from monitor.types import Payload, SourceBusy
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LOGIN_HTML = (FIXTURES / "login-page.html").read_text(encoding="utf-8")
@@ -246,6 +247,92 @@ async def test_fetch_runs_auto_accept_after_high_school_filtering() -> None:
         items = await monitor.fetch()
     assert isinstance(items[0], AutoAcceptItem)
     assert monitor.key(items[0]) == "auto-accepted:101"
+
+
+async def test_outcome_key_survives_temporary_ineligibility_without_duplicate_delivery() -> None:
+    class VisibilitySfe(SfeClient):
+        def __init__(self) -> None:
+            self.current: list[Job] = []
+            self.accepted_ids: list[int] = []
+
+        async def fetch_available_jobs(self) -> list[Job]:
+            return self.current
+
+        async def fetch_job_detail(self, _job_id: int) -> object:
+            return []
+
+        async def accept_job(self, job_id: int) -> None:
+            self.accepted_ids.append(job_id)
+
+        async def has_job_assignment(self, _job_id: int) -> bool:
+            return False
+
+    async def record_post(_url: str, payload: Payload) -> None:
+        posts.append(payload.embeds[0].description or "")
+
+    async def ignore_status(_payload: Payload) -> None:
+        return None
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    cfg = load_config({"SFE_USER_ID": USER_ID, "SFE_PIN": PIN, "DISCORD_WEBHOOK_URL": WEBHOOK})
+    sfe = VisibilitySfe()
+    logs: list[str] = []
+    accepter = AutoAccepter(
+        sfe,
+        timezone=cfg.timezone,
+        now_unix=lambda: NOW,
+        sleep=no_sleep,
+        log=logs.append,
+    )
+    monitor = JeffcoMonitor(
+        cfg,
+        sfe,
+        log=logs.append,
+        now_unix=lambda: NOW,
+        auto_accepter=accepter,
+    )
+    eligible = Job(
+        job_id=101,
+        location_name="RALSTON VALLEY HS",
+        job_start="2026-10-16T13:45Z",
+        job_end="2026-10-16T21:30Z",
+        duration_type="FULL",
+    )
+    temporarily_ineligible = Job(
+        job_id=101,
+        location_name="RALSTON VALLEY HS",
+        job_start="2026-10-16T13:45Z",
+        job_end="2026-10-16T21:30Z",
+        duration_type="HALF_DAY_AM",
+    )
+    posts: list[str] = []
+    previous: set[str] = set()
+    states: list[set[str]] = []
+
+    for current in ([eligible], [temporarily_ineligible], [eligible]):
+        sfe.current = current
+        previous = await run_tick(
+            monitor,
+            cfg.runner,
+            previous,
+            is_first_run=False,
+            poster=record_post,
+            post_status=ignore_status,
+            sleep=no_sleep,
+            log=logs.append,
+        )
+        states.append(previous)
+
+    assert states == [
+        {"auto-accepted:101"},
+        {"auto-accepted:101"},
+        {"auto-accepted:101"},
+    ]
+    assert sfe.accepted_ids == [101]
+    assert len(posts) == 1
+    assert "Automatically accepted" in posts[0]
 
 
 # --- key() -----------------------------------------------------------------

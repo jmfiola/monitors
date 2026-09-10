@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from jeffco.schools import normalize_school_name
-from jeffco.sfe import SfeHttpError
+from jeffco.sfe import SfeHtmlResponseError, SfeHttpError, SfeProtocolError
 from jeffco.types import Job
 
 AUTO_ACCEPT_MIN_DAYS = 7
@@ -69,14 +69,18 @@ def auto_accept_key(item: AutoAcceptItem) -> str:
 
 
 def _is_retryable(error: Exception) -> bool:
-    if isinstance(error, SfeHttpError):
+    if isinstance(error, (SfeHtmlResponseError, SfeHttpError)):
         return error.status in {408, 429} or 500 <= error.status <= 599
+    if isinstance(error, SfeProtocolError):
+        return True
     return isinstance(error, httpx.TransportError)
 
 
 def _failure_detail(error: Exception) -> str:
-    if isinstance(error, SfeHttpError):
+    if isinstance(error, (SfeHtmlResponseError, SfeHttpError)):
         return f"HTTP {error.status}"
+    if isinstance(error, SfeProtocolError):
+        return "transport error"
     if isinstance(error, httpx.TimeoutException):
         return "request timed out"
     if isinstance(error, httpx.TransportError):
@@ -107,16 +111,36 @@ class AutoAccepter:
         self._decisions = {
             job_id: decision for job_id, decision in self._decisions.items() if job_id in visible
         }
+        decided_before_tick = frozenset(self._decisions)
+        outcome_ids: set[int] = set()
         reconciled: list[JeffcoItem] = []
         for candidate in jobs:
-            if not is_auto_accept_eligible(candidate, now, self._timezone):
+            job_id = candidate.job_id
+            eligible = is_auto_accept_eligible(candidate, now, self._timezone)
+
+            # A decision from an earlier tick owns this identity until it
+            # disappears. Emitting the cached wrapper keeps its outcome key in
+            # runner state even if today's row is temporarily ineligible.
+            if job_id in decided_before_tick:
+                if job_id not in outcome_ids:
+                    reconciled.append(self._decisions[job_id])
+                    outcome_ids.add(job_id)
+                elif not eligible:
+                    # Row eligibility still governs same-tick duplicate rows.
+                    reconciled.append(candidate)
+                continue
+
+            if not eligible:
                 reconciled.append(candidate)
                 continue
-            decision = self._decisions.get(candidate.job_id)
+            decision = self._decisions.get(job_id)
             if decision is None:
                 decision = await self._attempt(candidate)
-                self._decisions[candidate.job_id] = decision
+                self._decisions[job_id] = decision
+            if job_id in outcome_ids:
+                continue
             reconciled.append(decision)
+            outcome_ids.add(job_id)
         return reconciled
 
     async def _attempt(self, job: Job) -> AutoAcceptItem:

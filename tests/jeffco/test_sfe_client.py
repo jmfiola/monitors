@@ -34,6 +34,7 @@ from urllib.parse import parse_qsl
 
 import httpx
 import pytest
+from jeffco.auto_accept import AutoAccepter, AutoAcceptItem, AutoAcceptOutcome, AutoAcceptStatus
 from jeffco.sfe import (
     SFE_BASE,
     SfeClient,
@@ -42,6 +43,7 @@ from jeffco.sfe import (
     SfeShapeError,
     extract_token,
 )
+from jeffco.types import Job
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LOGIN_HTML = (FIXTURES / "login-page.html").read_text(encoding="utf-8")
@@ -62,6 +64,8 @@ DENVER = "America/Denver"
 #: and hand the leak checks below a false pass.
 SESSION_SENTINEL = "A1B2LIVE_SECRET"
 MALFORMED_LOCATION = f"http://[::1;jsessionid={SESSION_SENTINEL}"
+
+type ResponseStep = httpx.Response | Exception
 
 
 def assert_no_leak(exc: BaseException) -> None:
@@ -94,6 +98,20 @@ def json_response(body: object, status: int = 200) -> httpx.Response:
 
 def empty_response(status: int = 204) -> httpx.Response:
     return httpx.Response(status)
+
+
+def auto_accept_candidate() -> Job:
+    return Job(
+        job_id=1025535,
+        location_name="RALSTON VALLEY HS",
+        job_start="2026-09-17T13:45:00Z",
+        job_end="2026-09-17T21:30:00Z",
+        duration_type="FULL",
+    )
+
+
+async def record_sleep(values: list[float], seconds: float) -> None:
+    values.append(seconds)
 
 
 def redirect(location: str, cookies: Sequence[str] = (), status: int = 302) -> httpx.Response:
@@ -138,9 +156,7 @@ class Harness:
     default, so a test that expects *no* network call fails loudly if one is made.
     """
 
-    def __init__(
-        self, responses: Sequence[httpx.Response], now: int, follow_redirects: bool
-    ) -> None:
+    def __init__(self, responses: Sequence[ResponseStep], now: int, follow_redirects: bool) -> None:
         self._queue = list(responses)
         self.calls: list[Call] = []
         self.logs: list[str] = []
@@ -169,7 +185,10 @@ class Harness:
         )
         if not self._queue:
             raise AssertionError(f"no response queued for {request.method} {request.url}")
-        return self._queue.pop(0)
+        step = self._queue.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
 
     @property
     def logins(self) -> int:
@@ -181,7 +200,7 @@ class Harness:
 
 @asynccontextmanager
 async def client(
-    responses: Sequence[httpx.Response],
+    responses: Sequence[ResponseStep],
     *,
     now: int = FIXTURE_EXP - 3600,  # an hour of token life left
     follow_redirects: bool = False,
@@ -673,9 +692,74 @@ async def test_acceptance_html_error_does_not_leak_a_session_id() -> None:
     async with client([*login_responses(), html(page, 500)]) as h:
         with pytest.raises(SfeShapeError, match=r"(?i)html") as exc:
             await h.sfe.accept_job(1025535)
-    rendered = "\n".join([str(exc.value), repr(exc.value)])
-    assert SESSION_SENTINEL not in rendered
-    assert "jsessionid" not in rendered
+    assert getattr(exc.value, "status", None) == 500
+    assert_no_leak(exc.value)
+
+
+async def test_auto_accept_retries_sanitized_remote_protocol_failures() -> None:
+    steps: list[ResponseStep] = []
+    for _ in range(3):
+        steps.extend(
+            [
+                httpx.RemoteProtocolError(f"malformed response: {MALFORMED_LOCATION}"),
+                json_response({"private": SESSION_SENTINEL}, 404),
+            ]
+        )
+    sleeps: list[float] = []
+    logs: list[str] = []
+
+    async with client([*login_responses(), *steps]) as h:
+        [item] = await AutoAccepter(
+            h.sfe,
+            timezone=DENVER,
+            now_unix=lambda: h.clock[0],
+            sleep=lambda seconds: record_sleep(sleeps, seconds),
+            log=logs.append,
+        ).reconcile([auto_accept_candidate()])
+
+    assignment_calls = [call for call in h.calls if "/api/jobAssignment/" in call.url]
+    assert [call.method for call in assignment_calls] == ["PUT", "GET", "PUT", "GET", "PUT", "GET"]
+    assert sleeps == [1.0, 3.0]
+    assert isinstance(item, AutoAcceptItem)
+    assert item.outcome == AutoAcceptOutcome(AutoAcceptStatus.FAILED, "transport error")
+    rendered = "\n".join([*h.logs, *logs, repr(item)])
+    for secret in (SESSION_SENTINEL, PIN, USER_ID, extract_token(LOGIN_HTML)):
+        assert secret not in rendered
+    assert "jsessionid" not in rendered.lower()
+
+
+@pytest.mark.parametrize("status", [408, 429, 503])
+async def test_auto_accept_retries_sanitized_html_retry_statuses(status: int) -> None:
+    page = f'<html><form action="/x;jsessionid={SESSION_SENTINEL}">'
+    steps: list[ResponseStep] = []
+    for _ in range(3):
+        steps.extend(
+            [
+                html(page, status),
+                json_response({"private": SESSION_SENTINEL}, 404),
+            ]
+        )
+    sleeps: list[float] = []
+    logs: list[str] = []
+
+    async with client([*login_responses(), *steps]) as h:
+        [item] = await AutoAccepter(
+            h.sfe,
+            timezone=DENVER,
+            now_unix=lambda: h.clock[0],
+            sleep=lambda seconds: record_sleep(sleeps, seconds),
+            log=logs.append,
+        ).reconcile([auto_accept_candidate()])
+
+    assignment_calls = [call for call in h.calls if "/api/jobAssignment/" in call.url]
+    assert [call.method for call in assignment_calls] == ["PUT", "GET", "PUT", "GET", "PUT", "GET"]
+    assert sleeps == [1.0, 3.0]
+    assert isinstance(item, AutoAcceptItem)
+    assert item.outcome == AutoAcceptOutcome(AutoAcceptStatus.FAILED, f"HTTP {status}")
+    rendered = "\n".join([*h.logs, *logs, repr(item)])
+    for secret in (SESSION_SENTINEL, PIN, USER_ID, extract_token(LOGIN_HTML)):
+        assert secret not in rendered
+    assert "jsessionid" not in rendered.lower()
 
 
 # --- the credential sweep ----------------------------------------------------

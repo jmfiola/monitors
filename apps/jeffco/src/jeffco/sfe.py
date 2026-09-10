@@ -92,6 +92,18 @@ class SfeShapeError(Exception):
     """The response's shape is not what the API contract says."""
 
 
+class SfeHtmlResponseError(SfeShapeError):
+    """An HTML response with only its safe HTTP status retained."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+class SfeProtocolError(SfeShapeError):
+    """A sanitized transport/protocol failure with no peer details attached."""
+
+
 def is_account_busy(err: object) -> bool:
     """Whether a failure means "the account is busy" rather than "something is
     wrong".
@@ -297,10 +309,11 @@ def _assert_not_html(text: str, content_type: str | None, label: str, status: in
     looks_html = "text/html" in (content_type or "") or text.lstrip().startswith("<")
     if not looks_html:
         return
-    raise SfeShapeError(
+    raise SfeHtmlResponseError(
+        status,
         f"SFE {label} returned HTML, not JSON (HTTP {status}, {len(text)} bytes; "
-        f"body withheld — SFE error pages embed a session id)"
-    )
+        f"body withheld — SFE error pages embed a session id)",
+    ) from None
 
 
 def _api_message(text: str) -> str:
@@ -477,7 +490,7 @@ class SfeClient:
                 follow_redirects=False,
             )
         except httpx.RemoteProtocolError:
-            raise SfeShapeError(
+            raise SfeProtocolError(
                 f"SFE {label}: the response could not be read — an unparseable location "
                 f"header or a malformed HTTP response (details withheld: SFE's location "
                 f"headers carry a session id)"
