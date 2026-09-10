@@ -193,8 +193,8 @@ headers are never logged.
 
 ## Discord messages
 
-Ordinary jobs continue using the existing blue available-job message byte for
-byte, preserving the current TypeScript parity cases.
+Ordinary jobs continue using the existing available-job message byte for byte,
+preserving the current TypeScript parity cases.
 
 An accepted outcome produces one green message with:
 
