@@ -18,6 +18,13 @@ from pathlib import Path
 
 import httpx
 import pytest
+from jeffco.auto_accept import (
+    AutoAccepter,
+    AutoAcceptItem,
+    AutoAcceptOutcome,
+    AutoAcceptStatus,
+    JeffcoItem,
+)
 from jeffco.config import load_config
 from jeffco.monitor import JeffcoMonitor
 from jeffco.sfe import SfeClient, SfeHttpError
@@ -72,10 +79,19 @@ def _queue(responses: list[httpx.Response]) -> Callable[[httpx.Request], httpx.R
     return handler
 
 
+async def _record_sleep(sleeps: list[float], seconds: float) -> None:
+    sleeps.append(seconds)
+
+
 def make_monitor(
-    responses: list[httpx.Response], logs: list[str] | None = None
+    responses: list[httpx.Response],
+    logs: list[str] | None = None,
+    *,
+    enable_auto_accept: bool = False,
+    sleeps: list[float] | None = None,
 ) -> tuple[JeffcoMonitor, httpx.AsyncClient]:
     sink = logs if logs is not None else []
+    sleep_calls = sleeps if sleeps is not None else []
     cfg = load_config({"SFE_USER_ID": USER_ID, "SFE_PIN": PIN, "DISCORD_WEBHOOK_URL": WEBHOOK})
     client = httpx.AsyncClient(transport=httpx.MockTransport(_queue(responses)))
     sfe = SfeClient(
@@ -87,7 +103,24 @@ def make_monitor(
         now_unix=lambda: NOW,
         log=sink.append,
     )
-    monitor = JeffcoMonitor(cfg, sfe, log=sink.append, now_unix=lambda: NOW)
+    auto_accepter = (
+        AutoAccepter(
+            sfe,
+            timezone=cfg.timezone,
+            now_unix=lambda: NOW,
+            sleep=lambda seconds: _record_sleep(sleep_calls, seconds),
+            log=sink.append,
+        )
+        if enable_auto_accept
+        else None
+    )
+    monitor = JeffcoMonitor(
+        cfg,
+        sfe,
+        log=sink.append,
+        now_unix=lambda: NOW,
+        auto_accepter=auto_accepter,
+    )
     return monitor, client
 
 
@@ -200,6 +233,21 @@ async def test_sfe_500_stays_an_sfehttperror_and_earns_backoff() -> None:
             await monitor.fetch()
 
 
+async def test_fetch_runs_auto_accept_after_high_school_filtering() -> None:
+    row = _job(101, "RALSTON VALLEY HS")
+    row["jobStart"] = "2026-10-16T13:45Z"
+    row["jobEnd"] = "2026-10-16T21:30Z"
+    row["durationType"] = "FULL"
+    monitor, client = make_monitor(
+        [*_login_responses(), _json_response([row]), httpx.Response(204)],
+        enable_auto_accept=True,
+    )
+    async with client:
+        items = await monitor.fetch()
+    assert isinstance(items[0], AutoAcceptItem)
+    assert monitor.key(items[0]) == "auto-accepted:101"
+
+
 # --- key() -----------------------------------------------------------------
 
 
@@ -216,13 +264,30 @@ def test_key_is_the_job_id_alone_not_a_content_hash() -> None:
     assert monitor.key(other_job) == "2"
 
 
+def test_outcome_key_is_distinct_from_a_previously_seen_job_id() -> None:
+    monitor, _ = make_monitor([])
+    base = Job(
+        job_id=1025535,
+        location_name="RALSTON VALLEY HS",
+        job_start="2026-10-16T13:45Z",
+        job_end="2026-10-16T21:30Z",
+        duration_type="FULL",
+    )
+    accepted = AutoAcceptItem(
+        base,
+        AutoAcceptOutcome(AutoAcceptStatus.ACCEPTED),
+    )
+    assert monitor.key(base) == "1025535"
+    assert monitor.key(accepted) == "auto-accepted:1025535"
+
+
 # --- render() --------------------------------------------------------------
 
 
 async def test_render_resolves_dates_per_job() -> None:
     # One message per job, each with its own date line pulled from that job's own
     # detail fetch -- not one shared line for the whole batch.
-    jobs = [
+    jobs: list[JeffcoItem] = [
         Job(
             job_id=1025535,
             location_name="RALSTON VALLEY HS",
@@ -260,7 +325,7 @@ async def test_a_failed_detail_fetch_degrades_only_that_one_job() -> None:
     # batch (monitor.runner.run_tick) -- so one unreachable detail endpoint must
     # degrade one job's dates rather than silence the whole tick's alerts. This
     # matters more in Python than it did in TypeScript for exactly that reason.
-    jobs = [
+    jobs: list[JeffcoItem] = [
         Job(
             job_id=1025535,
             location_name="RALSTON VALLEY HS",
@@ -289,6 +354,56 @@ async def test_a_failed_detail_fetch_degrades_only_that_one_job() -> None:
     assert second is not None
     assert "approximate" not in first
     assert "approximate, check SFE" in second
+
+
+async def test_render_preserves_mixed_ordinary_and_outcome_order() -> None:
+    ordinary = Job(
+        job_id=1,
+        location_name="WHEAT RIDGE HIGH SCHOOL",
+        job_start="2026-09-04T13:45Z",
+        job_end="2026-09-04T21:30Z",
+    )
+    accepted_job = Job(
+        job_id=2,
+        location_name="GOLDEN HIGH SCHOOL",
+        job_start="2026-10-16T13:45Z",
+        job_end="2026-10-16T21:30Z",
+        duration_type="FULL",
+    )
+    accepted = AutoAcceptItem(
+        accepted_job,
+        AutoAcceptOutcome(AutoAcceptStatus.ACCEPTED),
+    )
+    monitor, client = make_monitor(
+        [*_login_responses(), _json_response(SINGLE), _json_response(MULTIDAY)]
+    )
+    async with client:
+        messages = await monitor.render([ordinary, accepted])
+    assert [message.covers for message in messages] == [
+        ("1",),
+        ("auto-accepted:2",),
+    ]
+    assert "Automatically accepted" not in (messages[0].payload.embeds[0].description or "")
+    assert "Automatically accepted" in (messages[1].payload.embeds[0].description or "")
+
+
+async def test_outcome_detail_failure_keeps_the_irreversible_status() -> None:
+    accepted = AutoAcceptItem(
+        Job(
+            job_id=2,
+            location_name="GOLDEN HIGH SCHOOL",
+            job_start="2026-10-16T13:45Z",
+            job_end="2026-10-16T21:30Z",
+            duration_type="FULL",
+        ),
+        AutoAcceptOutcome(AutoAcceptStatus.ACCEPTED),
+    )
+    monitor, client = make_monitor([*_login_responses(), _json_response({"message": "boom"}, 500)])
+    async with client:
+        [message] = await monitor.render([accepted])
+    description = message.payload.embeds[0].description or ""
+    assert "Automatically accepted" in description
+    assert "approximate, check SFE" in description
 
 
 # --- heartbeat_extras() -----------------------------------------------------

@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 from monitor.timing import system_now
 from monitor.types import HeartbeatExtras, Message, Monitor, SourceBusy
 
-from jeffco.alert import format_job_alerts, heartbeat_extras_for
+from jeffco.alert import format_auto_accept_alert, format_job_alerts, heartbeat_extras_for
+from jeffco.auto_accept import AutoAccepter, AutoAcceptItem, JeffcoItem, auto_accept_key
 from jeffco.config import JeffcoConfig
 from jeffco.dates import format_approximate, format_job_days, parse_job_days
 from jeffco.schools import partition_jobs
@@ -17,7 +18,7 @@ from jeffco.types import Job
 
 
 class JeffcoMonitor:
-    """Implements `monitor.runner.Monitor[Job]`.
+    """Implements `monitor.runner.Monitor[JeffcoItem]`.
 
     Holds the accumulated filter-gap names for the process lifetime -- see
     `_unmatched_seen`. Melanzana holds no state between ticks; jeffco holds this
@@ -30,10 +31,12 @@ class JeffcoMonitor:
         sfe: SfeClient,
         log: Callable[[str], None],
         now_unix: Callable[[], int] = system_now,
+        auto_accepter: AutoAccepter | None = None,
     ) -> None:
         self._cfg = cfg
         self._sfe = sfe
         self._log = log
+        self._auto_accepter = auto_accepter
         # `now_unix` is not read anywhere below -- every SFE call already carries
         # its own clock via `SfeClient`. Held anyway so `main.py` can pass the SAME
         # callable here and to `run_forever`, per the Monitor protocol's clock
@@ -49,7 +52,7 @@ class JeffcoMonitor:
         # prevent, just triggered by spelling instead of by arrival time.
         self._unmatched_seen: dict[str, None] = {}
 
-    async def fetch(self) -> list[Job]:
+    async def fetch(self) -> list[JeffcoItem]:
         """Every currently-available High School job.
 
         `is_account_busy` re-raises as `SourceBusy` so the runner holds its normal
@@ -75,9 +78,12 @@ class JeffcoMonitor:
                 continue
             self._unmatched_seen[name] = None
             self._log(f'filter gap: "{name}" matched neither the school list nor the pattern')
-        return hs
+        if self._auto_accepter is None:
+            items: list[JeffcoItem] = list(hs)
+            return items
+        return await self._auto_accepter.reconcile(hs)
 
-    def key(self, item: Job) -> str:
+    def key(self, item: JeffcoItem) -> str:
         """The job id alone -- deliberately not a content hash.
 
         An edited job (a changed subject, a shifted end time) must not re-alert:
@@ -85,9 +91,11 @@ class JeffcoMonitor:
         job that is claimed and then released must re-alert, because that is a
         genuine new opportunity. Keying on the id alone gives both for free.
         """
+        if isinstance(item, AutoAcceptItem):
+            return auto_accept_key(item)
         return str(item.job_id)
 
-    async def render(self, new: list[Job]) -> list[Message]:
+    async def render(self, new: list[JeffcoItem]) -> list[Message]:
         """One message per job, each carrying its own resolved date line.
 
         A failed detail fetch degrades only the one job it belongs to -- it falls
@@ -97,10 +105,15 @@ class JeffcoMonitor:
         key in the batch (see monitor.runner.run_tick), so one unreachable detail
         endpoint must not silence an entire tick's alerts.
         """
-        pairs: list[tuple[Job, str]] = []
-        for job in new:
-            pairs.append((job, await self._resolve_date_line(job)))
-        return format_job_alerts(pairs)
+        messages: list[Message] = []
+        for item in new:
+            job = item.job if isinstance(item, AutoAcceptItem) else item
+            date_line = await self._resolve_date_line(job)
+            if isinstance(item, AutoAcceptItem):
+                messages.append(format_auto_accept_alert(item, date_line))
+            else:
+                messages.extend(format_job_alerts([(job, date_line)]))
+        return messages
 
     async def _resolve_date_line(self, job: Job) -> str:
         try:
@@ -129,5 +142,5 @@ class JeffcoMonitor:
 
 if TYPE_CHECKING:  # a compile-time assertion, no runtime cost, no fake arguments
 
-    def _assert_satisfies_protocol(m: JeffcoMonitor) -> Monitor[Job]:
+    def _assert_satisfies_protocol(m: JeffcoMonitor) -> Monitor[JeffcoItem]:
         return m
