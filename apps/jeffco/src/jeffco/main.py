@@ -13,6 +13,7 @@ from monitor.runner import install_shutdown_handlers, run_forever
 from monitor.timing import system_now
 from monitor.types import Payload
 
+from jeffco.auto_accept import AutoAccepter
 from jeffco.config import LOG_PREFIX, load_config
 from jeffco.monitor import JeffcoMonitor
 from jeffco.sfe import SfeClient
@@ -30,7 +31,11 @@ async def _main() -> None:
     # access id, so printing the id would leak most of the PIN's shape into logs
     # that are not a secret store. `len(cfg.hs_schools)`, not the schools
     # themselves -- the list is long and not worth a log line of its own.
-    log(f"app config — window={cfg.window_days}d tz={cfg.timezone} schools={len(cfg.hs_schools)}")
+    auto_accept_state = "enabled" if cfg.auto_accept_enabled else "disabled"
+    log(
+        f"app config — window={cfg.window_days}d tz={cfg.timezone} "
+        f"schools={len(cfg.hs_schools)} auto_accept={auto_accept_state}"
+    )
 
     # This process's owner installs its own signal handlers; the library is a
     # loop, not a supervisor.
@@ -52,7 +57,24 @@ async def _main() -> None:
         # but a test that froze one clock and not the other would produce results
         # that look inexplicable, so the convention is kept even where it is not
         # yet load-bearing.
-        monitor = JeffcoMonitor(cfg, sfe, log=log, now_unix=system_now)
+        auto_accepter = (
+            AutoAccepter(
+                sfe,
+                timezone=cfg.timezone,
+                now_unix=system_now,
+                sleep=asyncio.sleep,
+                log=log,
+            )
+            if cfg.auto_accept_enabled
+            else None
+        )
+        monitor = JeffcoMonitor(
+            cfg,
+            sfe,
+            log=log,
+            now_unix=system_now,
+            auto_accepter=auto_accepter,
+        )
 
         async def poster(url: str, payload: Payload) -> None:
             await post(url, payload, client)

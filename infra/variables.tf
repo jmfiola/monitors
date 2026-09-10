@@ -130,6 +130,12 @@ variable "jeffco_status_webhook_url" {
   default     = ""
 }
 
+variable "jeffco_auto_accept_enabled" {
+  description = "Whether Jeffco may automatically accept narrowly eligible jobs."
+  type        = bool
+  default     = false
+}
+
 # 45s, still slower than the official SFE web client's own 30s refresh, because
 # the monitor shares one login with the substitute it watches for. SFE answers
 # HTTP 400 while a second session is active on the account, and the evidence that

@@ -5,7 +5,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from monitor.config import Env, RunnerConfig, env_num, env_required, env_str, load_runner_config
+from monitor.config import (
+    Env,
+    RunnerConfig,
+    env_bool,
+    env_num,
+    env_required,
+    env_str,
+    load_runner_config,
+)
 from monitor.types import OpsLabels
 
 from jeffco.schools import DEFAULT_HS_SCHOOLS, parse_school_list
@@ -30,6 +38,7 @@ class JeffcoConfig:
     runner: RunnerConfig
     sfe_user_id: str
     sfe_pin: str
+    auto_accept_enabled: bool
     #: The built-in list UNION whatever HS_SCHOOLS adds -- see load_config. Never
     #: the configured value alone: there is no way to shrink this from the
     #: environment.
@@ -56,6 +65,7 @@ def load_config(env: Env) -> JeffcoConfig:
         ),
         sfe_user_id=env_required(env, "SFE_USER_ID"),
         sfe_pin=env_required(env, "SFE_PIN"),
+        auto_accept_enabled=env_bool(env, "AUTO_ACCEPT_ENABLED", False),
         # Additive, never replacing: built-in list UNION whatever HS_SCHOOLS adds.
         # The realistic edit is "a school got missed, let me add it" -- replace
         # semantics would turn that one-liner into a silent loss of the other 21

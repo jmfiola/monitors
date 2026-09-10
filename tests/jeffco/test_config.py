@@ -24,6 +24,20 @@ WEBHOOK = "https://discord.test/webhook"
 BASE = {"SFE_USER_ID": "900001", "SFE_PIN": "secret", "DISCORD_WEBHOOK_URL": WEBHOOK}
 
 
+def test_auto_accept_is_disabled_by_default() -> None:
+    assert load_config(BASE).auto_accept_enabled is False
+
+
+def test_auto_accept_can_be_explicitly_enabled() -> None:
+    cfg = load_config({**BASE, "AUTO_ACCEPT_ENABLED": "true"})
+    assert cfg.auto_accept_enabled is True
+
+
+def test_auto_accept_uses_strict_shared_boolean_validation() -> None:
+    cfg = load_config({**BASE, "AUTO_ACCEPT_ENABLED": "sometimes"})
+    assert cfg.auto_accept_enabled is False
+
+
 def test_applies_every_default_when_only_the_required_vars_are_provided() -> None:
     cfg = load_config(BASE)
     assert cfg.window_days == 180

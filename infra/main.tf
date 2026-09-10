@@ -74,6 +74,7 @@ locals {
         SFE_USER_ID            = var.jeffco_sfe_user_id
         SFE_PIN                = var.jeffco_sfe_pin
         DISCORD_WEBHOOK_URL    = var.jeffco_discord_webhook_url
+        AUTO_ACCEPT_ENABLED    = tostring(var.jeffco_auto_accept_enabled)
         STATE_PATH             = "/data/state.json"
         POLL_INTERVAL_SEC      = tostring(var.jeffco_poll_interval_sec)
         HEARTBEAT_INTERVAL_SEC = tostring(var.heartbeat_interval_sec)
