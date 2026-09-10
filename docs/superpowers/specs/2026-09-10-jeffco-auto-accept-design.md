@@ -72,8 +72,8 @@ Job detail remains the authoritative source for the subsequent Discord date
 line.
 
 Malformed timestamps, naive timestamps, absent duration values, and unexpected
-school spellings remain ordinary alert-only jobs. They are logged as ineligible
-without logging source payloads.
+school spellings remain ordinary alert-only jobs and never cause an acceptance
+request.
 
 ## Components
 
