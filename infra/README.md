@@ -83,6 +83,20 @@ takes the boot disk with it, along with every app's `state.json`.
 To ship a new version, bump the tag in `apps.auto.tfvars` (committed, so git
 records what is deployed) and run `./deploy.sh`.
 
+### Jeffco automatic acceptance
+
+`jeffco_auto_accept_enabled` in `apps.auto.tfvars` is the non-secret production
+safety gate. A new auto-accept-capable image must first be deployed with the flag
+set to `false` and the Jeffco service verified. Enabling it is a second deployment
+with the flag set to `true`; rollback is the reverse edit followed by another full
+`deploy.sh` run.
+
+When enabled, Jeffco attempts only full-day jobs at normalized Ralston Valley,
+Golden, or Arvada West whose first Denver work date is at least seven calendar
+days away. Discord reports the accepted outcome or an urgent manual-claim failure
+after the bounded, assignment-verified attempt sequence. The decision cache is
+process-local, so restarting Jeffco begins a fresh visibility episode.
+
 `<app>_heartbeat_at` (default `07:00`) fixes that app's heartbeat to an America/Denver
 wall-clock hour. It is wired conditionally, so leaving it empty falls back to
 `HEARTBEAT_INTERVAL_SEC` rather than passing an empty string — those are different

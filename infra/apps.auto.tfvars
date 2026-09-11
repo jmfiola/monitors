@@ -7,6 +7,10 @@
 #
 # Deploying a new version is a one-line diff here followed by ./deploy.sh.
 
+# Non-secret production safety gate. Keep false for the first deployment of an
+# auto-accept-capable image, verify health, then enable in a separate deployment.
+jeffco_auto_accept_enabled = false
+
 apps = {
   melanzana = {
     image     = "melanzana-monitor"
