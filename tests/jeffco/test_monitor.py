@@ -238,6 +238,7 @@ async def test_fetch_runs_auto_accept_after_high_school_filtering() -> None:
     row = _job(101, "RALSTON VALLEY HS")
     row["jobStart"] = "2026-10-16T13:45Z"
     row["jobEnd"] = "2026-10-16T21:30Z"
+    row["classfName"] = "SEC MATH"
     row["durationType"] = "FULL"
     monitor, client = make_monitor(
         [*_login_responses(), _json_response([row]), httpx.Response(204)],
@@ -298,6 +299,7 @@ async def test_outcome_key_survives_temporary_ineligibility_without_duplicate_de
         location_name="RALSTON VALLEY HS",
         job_start="2026-10-16T13:45Z",
         job_end="2026-10-16T21:30Z",
+        classf_name="SEC MATH",
         duration_type="FULL",
     )
     temporarily_ineligible = Job(
@@ -305,6 +307,7 @@ async def test_outcome_key_survives_temporary_ineligibility_without_duplicate_de
         location_name="RALSTON VALLEY HS",
         job_start="2026-10-16T13:45Z",
         job_end="2026-10-16T21:30Z",
+        classf_name="SEC MATH",
         duration_type="HALF_DAY_AM",
     )
     posts: list[str] = []

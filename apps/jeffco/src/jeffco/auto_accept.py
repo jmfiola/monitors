@@ -15,7 +15,23 @@ from jeffco.types import Job
 
 AUTO_ACCEPT_MIN_DAYS = 7
 AUTO_ACCEPT_SCHOOLS = frozenset(
-    normalize_school_name(name) for name in ("RALSTON VALLEY HS", "GOLDEN HS", "ARVADA WEST HS")
+    normalize_school_name(name)
+    for name in ("RALSTON VALLEY HS", "GOLDEN HS", "ARVADA WEST HS", "STANDLEY LAKE HS")
+)
+AUTO_ACCEPT_SUBJECT_TERMS = (
+    "MATH",
+    "ALGEBRA",
+    "GEOMETRY",
+    "CALCULUS",
+    "STATISTICS",
+    "TRIGONOMETRY",
+    "SCIENCE",
+    "BIOLOGY",
+    "CHEMISTRY",
+    "PHYSICS",
+    "ASTRONOMY",
+    "GEOLOGY",
+    "ECOLOGY",
 )
 RETRY_DELAYS = (1.0, 3.0)
 
@@ -48,10 +64,19 @@ class AutoAcceptItem:
 type JeffcoItem = Job | AutoAcceptItem
 
 
+def _is_auto_accept_subject(subject: str | None) -> bool:
+    if subject is None:
+        return False
+    normalized = subject.upper()
+    return any(term in normalized for term in AUTO_ACCEPT_SUBJECT_TERMS)
+
+
 def is_auto_accept_eligible(job: Job, now_unix: int, timezone: str) -> bool:
     if job.duration_type != "FULL":
         return False
     if normalize_school_name(job.location_name) not in AUTO_ACCEPT_SCHOOLS:
+        return False
+    if not _is_auto_accept_subject(job.classf_name):
         return False
     try:
         start = datetime.fromisoformat(job.job_start.replace("Z", "+00:00"))

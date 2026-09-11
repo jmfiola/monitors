@@ -264,10 +264,14 @@ and runner know only about item keys and messages; no action state belongs there
 
 - Eligibility is exact and fails closed. The duration must be exactly `FULL`, the
   job's Denver date must be at least seven days away, and the normalized school must
-  be one of `RALSTON VALLEY HS`, `GOLDEN HS`, or `ARVADA WEST HS`. Malformed data and
-  every other high school are ineligible.
-  - `test_only_the_three_normalized_target_schools_qualify`
+  be one of `RALSTON VALLEY HS`, `GOLDEN HS`, `ARVADA WEST HS`, or `STANDLEY LAKE HS`.
+  Only the list response's subject field is inspected, and it must identify math or
+  science. Missing or unrelated subjects, malformed data, and every other high school
+  are ineligible.
+  - `test_only_the_four_normalized_target_schools_qualify`
   - `test_other_high_schools_do_not_qualify`
+  - `test_non_math_or_science_subjects_fail_closed`
+  - `test_math_and_all_science_subjects_qualify`
 - Each actual continuous visibility episode gets at most one bounded three-attempt
   sequence. A job must disappear before a later appearance can begin a new episode.
   - `test_three_transient_failures_produce_one_failed_outcome`

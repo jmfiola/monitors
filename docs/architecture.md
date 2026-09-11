@@ -126,18 +126,19 @@ Jeffco performs its mutation inside the app-owned `fetch` path. Its order is:
 ```text
 available jobs
   -> existing high-school partition
-  -> exact three-school/full-day/seven-day predicate
+  -> exact four-school/subject/full-day/seven-day predicate
   -> bounded PUT + assignment verification
   -> outcome-specific key
   -> existing runner diff/render/Discord delivery
 ```
 
 The eligible schools are the normalized forms of `RALSTON VALLEY HS`, `GOLDEN HS`,
-and `ARVADA WEST HS`; the duration must be exactly `FULL`, and the job's Denver date
-must be at least seven days away. Malformed data fails closed. The acceptance decision
-and mutation finish before the runner can diff, render, or deliver Discord messages,
-so Discord follows the outcome and cannot delay the PUT. With automatic acceptance
-disabled, this path is the old read-only fetch behavior.
+`ARVADA WEST HS`, and `STANDLEY LAKE HS`. The list response's subject field must
+identify math or science, the duration must be exactly `FULL`, and the job's Denver
+date must be at least seven days away. Malformed or missing data fails closed. The
+acceptance decision and mutation finish before the runner can diff, render, or deliver
+Discord messages, so Discord follows the outcome and cannot delay the PUT. With
+automatic acceptance disabled, this path is the old read-only fetch behavior.
 
 ### FashionJobs reads are transactional and monotonic
 

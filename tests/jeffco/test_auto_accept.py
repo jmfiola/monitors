@@ -49,6 +49,7 @@ def job(
     location_name: str = "RALSTON VALLEY HS",
     job_start: str = "2026-09-17T13:45:00Z",
     duration_type: str | None = "FULL",
+    classf_name: str | None = "SEC MATH",
     job_id: int = 101,
 ) -> Job:
     return Job(
@@ -56,6 +57,7 @@ def job(
         location_name=location_name,
         job_start=job_start,
         job_end=job_start,
+        classf_name=classf_name,
         duration_type=duration_type,
     )
 
@@ -90,9 +92,11 @@ def make_accepter(
         "Golden Sr High",
         "ARVADA WEST HS",
         "Arvada West High School",
+        "STANDLEY LAKE HS",
+        "Standley Lake High School",
     ],
 )
-def test_only_the_three_normalized_target_schools_qualify(school: str) -> None:
+def test_only_the_four_normalized_target_schools_qualify(school: str) -> None:
     assert is_auto_accept_eligible(job(location_name=school), NOW, DENVER)
 
 
@@ -102,6 +106,39 @@ def test_only_the_three_normalized_target_schools_qualify(school: str) -> None:
 )
 def test_other_high_schools_do_not_qualify(school: str) -> None:
     assert not is_auto_accept_eligible(job(location_name=school), NOW, DENVER)
+
+
+@pytest.mark.parametrize("subject", [None, "", "ENGLISH", "SEC SOCIAL STUDIES"])
+def test_non_math_or_science_subjects_fail_closed(subject: str | None) -> None:
+    assert not is_auto_accept_eligible(job(classf_name=subject), NOW, DENVER)
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        "SEC MATH",
+        "MATHEMATICS",
+        "ALGEBRA I",
+        "GEOMETRY",
+        "CALCULUS",
+        "STATISTICS",
+        "TRIGONOMETRY",
+        "SEC SCIENCE",
+        "BIOLOGY",
+        "CHEMISTRY",
+        "PHYSICS",
+        "ASTRONOMY",
+        "GEOLOGY",
+        "ECOLOGY",
+        "ENVIRONMENTAL SCIENCE",
+        "EARTH SCIENCE",
+        "COMPUTER SCIENCE",
+        "SOCIAL SCIENCE",
+        "FAMILY AND CONSUMER SCIENCE",
+    ],
+)
+def test_math_and_all_science_subjects_qualify(subject: str) -> None:
+    assert is_auto_accept_eligible(job(classf_name=subject), NOW, DENVER)
 
 
 def test_exactly_seven_denver_calendar_days_qualifies() -> None:

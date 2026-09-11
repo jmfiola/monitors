@@ -106,6 +106,7 @@ def auto_accept_candidate() -> Job:
         location_name="RALSTON VALLEY HS",
         job_start="2026-09-17T13:45:00Z",
         job_end="2026-09-17T21:30:00Z",
+        classf_name="SEC MATH",
         duration_type="FULL",
     )
 

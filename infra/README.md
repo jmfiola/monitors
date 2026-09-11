@@ -91,11 +91,13 @@ set to `false` and the Jeffco service verified. Enabling it is a second deployme
 with the flag set to `true`; rollback is the reverse edit followed by another full
 `deploy.sh` run.
 
-When enabled, Jeffco attempts only full-day jobs at normalized Ralston Valley,
-Golden, or Arvada West whose first Denver work date is at least seven calendar
-days away. Discord reports the accepted outcome or an urgent manual-claim failure
-after the bounded, assignment-verified attempt sequence. The decision cache is
-process-local, so restarting Jeffco begins a fresh visibility episode.
+When enabled, Jeffco attempts only full-day math or science jobs at normalized
+Ralston Valley, Golden, Arvada West, or Standley Lake whose first Denver work date
+is at least seven calendar days away. Subject matching reads only SFE's subject
+field; missing and unrelated subjects fail closed. Discord reports the accepted
+outcome or an urgent manual-claim failure after the bounded, assignment-verified
+attempt sequence. The decision cache is process-local, so restarting Jeffco begins
+a fresh visibility episode.
 
 `<app>_heartbeat_at` (default `07:00`) fixes that app's heartbeat to an America/Denver
 wall-clock hour. It is wired conditionally, so leaving it empty falls back to

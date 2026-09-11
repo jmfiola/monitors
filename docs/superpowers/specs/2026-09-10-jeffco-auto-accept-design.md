@@ -58,22 +58,27 @@ The job qualifies only when:
 1. `duration_type == "FULL"` exactly. Missing or unfamiliar values do not
    qualify.
 2. The normalized location matches one of these normalized names:
-   `RALSTON VALLEY HS`, `GOLDEN HS`, or `ARVADA WEST HS`. Matching reuses
-   `normalize_school_name`; the broader high-school pattern is not sufficient
-   for automatic acceptance.
-3. `job_start` is a valid ISO-8601 timestamp with an explicit UTC offset. Its
+   `RALSTON VALLEY HS`, `GOLDEN HS`, `ARVADA WEST HS`, or `STANDLEY LAKE HS`.
+   Matching reuses `normalize_school_name`; the broader high-school pattern is
+   not sufficient for automatic acceptance.
+3. `classf_name`, SFE's subject field, contains a case-insensitive math or science
+   term. Math includes math/mathematics, algebra, geometry, calculus, statistics,
+   and trigonometry. Science includes any subject containing science, plus biology,
+   chemistry, physics, astronomy, geology, and ecology. No other job field is used
+   to infer the subject, and a missing subject does not qualify.
+4. `job_start` is a valid ISO-8601 timestamp with an explicit UTC offset. Its
    `America/Denver` date must be greater than or equal to the current Denver date
    plus seven days. Exactly seven days qualifies; six days does not.
 
 `job_start` is the first work date used for the decision. The detail endpoint is
 not fetched before acceptance because the available-jobs row already provides
-the required start, duration, location, and ID, and acceptance speed matters.
+the required start, duration, location, subject, and ID, and acceptance speed matters.
 Job detail remains the authoritative source for the subsequent Discord date
 line.
 
-Malformed timestamps, naive timestamps, absent duration values, and unexpected
-school spellings remain ordinary alert-only jobs and never cause an acceptance
-request.
+Malformed timestamps, naive timestamps, absent duration or subject values, unrelated
+subjects, and unexpected school spellings remain ordinary alert-only jobs and never
+cause an acceptance request.
 
 ## Components
 
