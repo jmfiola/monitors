@@ -94,10 +94,10 @@ with the flag set to `true`; rollback is the reverse edit followed by another fu
 When enabled, Jeffco attempts only full-day math or science jobs at normalized
 Ralston Valley, Golden, Arvada West, or Standley Lake whose first Denver work date
 is at least seven calendar days away. Subject matching reads only SFE's subject
-field; missing and unrelated subjects fail closed. Discord reports the accepted
-outcome or an urgent manual-claim failure after the bounded, assignment-verified
-attempt sequence. The decision cache is process-local, so restarting Jeffco begins
-a fresh visibility episode.
+field; Family/Consumer, missing, and unrelated subjects fail closed. Discord reports
+the accepted outcome or an urgent manual-claim failure after the bounded,
+assignment-verified attempt sequence. The decision cache is process-local, so
+restarting Jeffco begins a fresh visibility episode.
 
 `<app>_heartbeat_at` (default `07:00`) fixes that app's heartbeat to an America/Denver
 wall-clock hour. It is wired conditionally, so leaving it empty falls back to

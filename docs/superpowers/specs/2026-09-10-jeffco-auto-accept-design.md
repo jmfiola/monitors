@@ -5,8 +5,10 @@
 Automatically accept a Jeffco substitute job when all of these conditions hold:
 
 - SFE reports the job as a full day.
-- The school is Ralston Valley High School, Golden High School, or Arvada West
-  High School.
+- The school is Ralston Valley High School, Golden High School, Arvada West High
+  School, or Standley Lake High School.
+- SFE's subject field identifies math or science and is not a Family/Consumer
+  classification.
 - The first work date is at least seven Denver calendar days after today.
 
 The monitor sends one Discord outcome message after the attempt: a confirmation
@@ -63,9 +65,11 @@ The job qualifies only when:
    not sufficient for automatic acceptance.
 3. `classf_name`, SFE's subject field, contains a case-insensitive math or science
    term. Math includes math/mathematics, algebra, geometry, calculus, statistics,
-   and trigonometry. Science includes any subject containing science, plus biology,
-   chemistry, physics, astronomy, geology, and ecology. No other job field is used
-   to infer the subject, and a missing subject does not qualify.
+   and trigonometry. Science includes science/sciences as a standalone term, plus
+   biology, chemistry, physics, astronomy, geology, and ecology. Family/Consumer
+   classifications are explicitly excluded even when the label also contains science.
+   No other job field is used to infer the subject, and a missing subject does not
+   qualify.
 4. `job_start` is a valid ISO-8601 timestamp with an explicit UTC offset. Its
    `America/Denver` date must be greater than or equal to the current Denver date
    plus seven days. Exactly seven days qualifies; six days does not.
@@ -203,7 +207,7 @@ preserving the current TypeScript parity cases.
 
 An accepted outcome produces one green message with:
 
-- title: the school name;
+- title: `🎉 AUTOMATICALLY ACCEPTED — {school name} 🎉`;
 - status: `Automatically accepted`;
 - subject, resolved dates, and teacher using the existing formatting rules;
 - job ID;

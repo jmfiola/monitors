@@ -93,7 +93,7 @@ def test_formats_an_automatic_acceptance_confirmation() -> None:
     )
     message = format_auto_accept_alert(item, DATE_LINE)
     embed = message.payload.embeds[0]
-    assert embed.title == "🏫 RALSTON VALLEY HS"
+    assert embed.title == "🎉 AUTOMATICALLY ACCEPTED — RALSTON VALLEY HS 🎉"
     assert embed.description == (
         "**Status:** Automatically accepted\n"
         "**Subject:** SEC MATH\n"

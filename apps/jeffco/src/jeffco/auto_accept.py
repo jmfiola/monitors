@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -18,21 +19,27 @@ AUTO_ACCEPT_SCHOOLS = frozenset(
     normalize_school_name(name)
     for name in ("RALSTON VALLEY HS", "GOLDEN HS", "ARVADA WEST HS", "STANDLEY LAKE HS")
 )
-AUTO_ACCEPT_SUBJECT_TERMS = (
-    "MATH",
-    "ALGEBRA",
-    "GEOMETRY",
-    "CALCULUS",
-    "STATISTICS",
-    "TRIGONOMETRY",
-    "SCIENCE",
-    "BIOLOGY",
-    "CHEMISTRY",
-    "PHYSICS",
-    "ASTRONOMY",
-    "GEOLOGY",
-    "ECOLOGY",
+AUTO_ACCEPT_SUBJECT_TERMS = frozenset(
+    {
+        "MATH",
+        "MATHEMATICS",
+        "ALGEBRA",
+        "GEOMETRY",
+        "CALCULUS",
+        "STATISTICS",
+        "TRIGONOMETRY",
+        "SCIENCE",
+        "SCIENCES",
+        "BIOLOGY",
+        "CHEMISTRY",
+        "PHYSICS",
+        "ASTRONOMY",
+        "GEOLOGY",
+        "ECOLOGY",
+    }
 )
+FAMILY_CONSUMER_TERMS = frozenset({"FAMILY", "CONSUMER"})
+SUBJECT_WORDS = re.compile(r"[A-Z0-9]+")
 RETRY_DELAYS = (1.0, 3.0)
 
 type Sleeper = Callable[[float], Awaitable[None]]
@@ -67,8 +74,10 @@ type JeffcoItem = Job | AutoAcceptItem
 def _is_auto_accept_subject(subject: str | None) -> bool:
     if subject is None:
         return False
-    normalized = subject.upper()
-    return any(term in normalized for term in AUTO_ACCEPT_SUBJECT_TERMS)
+    words = frozenset(SUBJECT_WORDS.findall(subject.upper()))
+    if words >= FAMILY_CONSUMER_TERMS:
+        return False
+    return not AUTO_ACCEPT_SUBJECT_TERMS.isdisjoint(words)
 
 
 def is_auto_accept_eligible(job: Job, now_unix: int, timezone: str) -> bool:

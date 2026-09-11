@@ -250,6 +250,21 @@ async def test_fetch_runs_auto_accept_after_high_school_filtering() -> None:
     assert monitor.key(items[0]) == "auto-accepted:101"
 
 
+async def test_family_consumer_science_never_reaches_auto_accept() -> None:
+    row = _job(101, "RALSTON VALLEY HS")
+    row["jobStart"] = "2026-10-16T13:45Z"
+    row["jobEnd"] = "2026-10-16T21:30Z"
+    row["classfName"] = "FAMILY AND CONSUMER SCIENCE"
+    row["durationType"] = "FULL"
+    monitor, client = make_monitor(
+        [*_login_responses(), _json_response([row])],
+        enable_auto_accept=True,
+    )
+    async with client:
+        items = await monitor.fetch()
+    assert isinstance(items[0], Job)
+
+
 async def test_outcome_key_survives_temporary_ineligibility_without_duplicate_delivery() -> None:
     class VisibilitySfe(SfeClient):
         def __init__(self) -> None:

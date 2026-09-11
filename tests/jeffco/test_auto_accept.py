@@ -108,7 +108,20 @@ def test_other_high_schools_do_not_qualify(school: str) -> None:
     assert not is_auto_accept_eligible(job(location_name=school), NOW, DENVER)
 
 
-@pytest.mark.parametrize("subject", [None, "", "ENGLISH", "SEC SOCIAL STUDIES"])
+@pytest.mark.parametrize(
+    "subject",
+    [
+        None,
+        "",
+        "ENGLISH",
+        "SEC SOCIAL STUDIES",
+        "SEC FAMILY CONSUMER",
+        "FAMILY AND CONSUMER SCIENCE",
+        "FAMILY & CONSUMER SCIENCE",
+        "AFTERMATH",
+        "CONSCIENCE",
+    ],
+)
 def test_non_math_or_science_subjects_fail_closed(subject: str | None) -> None:
     assert not is_auto_accept_eligible(job(classf_name=subject), NOW, DENVER)
 
@@ -124,6 +137,7 @@ def test_non_math_or_science_subjects_fail_closed(subject: str | None) -> None:
         "STATISTICS",
         "TRIGONOMETRY",
         "SEC SCIENCE",
+        "NATURAL SCIENCES",
         "BIOLOGY",
         "CHEMISTRY",
         "PHYSICS",
@@ -134,7 +148,6 @@ def test_non_math_or_science_subjects_fail_closed(subject: str | None) -> None:
         "EARTH SCIENCE",
         "COMPUTER SCIENCE",
         "SOCIAL SCIENCE",
-        "FAMILY AND CONSUMER SCIENCE",
     ],
 )
 def test_math_and_all_science_subjects_qualify(subject: str) -> None:

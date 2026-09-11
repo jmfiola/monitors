@@ -74,7 +74,11 @@ def format_auto_accept_alert(item: AutoAcceptItem, date_line: str) -> Message:
         payload=Payload(
             embeds=(
                 Embed(
-                    title=f"🏫 {item.job.location_name}",
+                    title=(
+                        f"🎉 AUTOMATICALLY ACCEPTED — {item.job.location_name} 🎉"
+                        if accepted
+                        else f"🏫 {item.job.location_name}"
+                    ),
                     url=AVAILABLE_JOBS_URL,
                     description="\n".join(lines),
                     color=GREEN if accepted else RED,
