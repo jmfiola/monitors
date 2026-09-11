@@ -20,7 +20,7 @@ apps = {
 
   jeffco = {
     image     = "jeffco-sub-monitor"
-    image_tag = "v2.4.0"
+    image_tag = "v2.4.1"
     memory    = "256m"
   }
 
