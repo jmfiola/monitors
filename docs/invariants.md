@@ -300,9 +300,9 @@ and runner know only about item keys and messages; no action state belongs there
 `apps/jeffco/src/jeffco/config.py` / `schools.py`
 
 `JEFFCO_PROFILE` has no default. **The tempting simplification is to default to
-`dad`**, since that is what the instance always did. On Mom's instance a forgotten
-variable would then run Dad's high-school filter against her elementary feed: no
-alerts, a healthy heartbeat, and nothing to say why. A missing, miscased, or padded
+`dad`.** On Mom's instance a forgotten variable would then run Dad's high-school
+filter against her elementary feed: no alerts, a healthy heartbeat, and nothing to
+say why. A missing, miscased, or padded
 value is refused at startup instead.
 
 The `mom` profile matches her named list only. Folding the high-school pattern back
