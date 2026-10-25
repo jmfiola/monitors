@@ -1,10 +1,13 @@
 ###############################################################################
-# Artifact Registry — one Docker repository per app, named after its key.
+# Artifact Registry — one Docker repository per distinct repository name, which
+# defaults to the app key (see local.repositories).
 #
-# All repositories live here, so one state describes the whole host.
+# All repositories live here, so one state describes the whole host. Keyed by
+# repository name rather than app key, so a second instance of an existing app
+# reuses that app's repository instead of creating an empty one of its own.
 ###############################################################################
 resource "google_artifact_registry_repository" "app" {
-  for_each = var.apps
+  for_each = toset(values(local.repositories))
 
   location      = var.region
   repository_id = each.key
@@ -48,8 +51,12 @@ data "google_compute_image" "cos" {
 }
 
 locals {
+  # Which repository each app pulls from: its own key unless the entry names
+  # another app's, as a second instance of the same image does.
+  repositories = { for k, a in var.apps : k => coalesce(a.repository, k) }
+
   images = {
-    for k, a in var.apps : k => "${var.region}-docker.pkg.dev/${var.project_id}/${k}/${a.image}:${a.image_tag}"
+    for k, a in var.apps : k => "${var.region}-docker.pkg.dev/${var.project_id}/${local.repositories[k]}/${a.image}:${a.image_tag}"
   }
 
   # Per-app environment. Keys here must match keys in var.apps; the instance has
@@ -71,6 +78,7 @@ locals {
 
     jeffco = merge(
       {
+        JEFFCO_PROFILE         = "dad"
         SFE_USER_ID            = var.jeffco_sfe_user_id
         SFE_PIN                = var.jeffco_sfe_pin
         DISCORD_WEBHOOK_URL    = var.jeffco_discord_webhook_url

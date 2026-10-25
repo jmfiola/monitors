@@ -20,7 +20,7 @@ IPv4 address (~$0.005/hr), needed for outbound calls. No inbound ports are opene
 | Resource | Notes |
 | --- | --- |
 | `google_compute_instance.host` | named `monitors`, `e2-micro`, COS |
-| `google_artifact_registry_repository.app` | one Docker repo per app, named after its key |
+| `google_artifact_registry_repository.app` | one Docker repo per distinct `repository` (defaults to the app key) |
 | `google_service_account.vm` + 3 IAM roles | pull images, write logs and metrics. Nothing else |
 
 Per app, everything is derived from its key in `apps.auto.tfvars`: the container

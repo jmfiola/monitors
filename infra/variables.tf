@@ -38,13 +38,18 @@ variable "zone" {
 # follow one rule — melanzana's is `melanzana-monitor`, jeffco's is
 # `jeffco-sub-monitor`. Inventing a convention here would mean renaming a
 # published image to satisfy a pattern.
+#
+# `repository` is optional and defaults to the key. A second instance of an
+# existing app names that app's repository, so it pulls the same image instead
+# of getting an empty repository of its own and a duplicate push.
 ###############################################################################
 variable "apps" {
   description = "Monitors to run on the host, keyed by name."
   type = map(object({
-    image     = string
-    image_tag = string
-    memory    = string
+    image      = string
+    image_tag  = string
+    memory     = string
+    repository = optional(string)
   }))
 
   validation {

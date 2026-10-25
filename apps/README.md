@@ -31,6 +31,8 @@ the deploy — otherwise the startup script finds no image.
 7. `infra/main.tf` — a `local.app_env.<app>` map. The instance has a precondition
    that fails the plan if this is missing, so a forgotten entry cannot ship.
 8. `infra/apps.auto.tfvars` — the `apps` entry: `image`, `image_tag`, `memory`.
+   A second instance of an existing app also sets `repository` to that app's key,
+   so it pulls the same image rather than needing a repository and push of its own.
 9. `infra/terraform.tfvars` — the secrets (gitignored, never committed).
 10. `cd infra && terraform apply -target=google_artifact_registry_repository.app`
     — creates the repository so there is somewhere to push.
