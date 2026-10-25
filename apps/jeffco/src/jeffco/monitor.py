@@ -72,7 +72,7 @@ class JeffcoMonitor:
                 raise SourceBusy(str(err)) from err
             raise
 
-        hs, unmatched = partition_jobs(jobs, self._cfg.hs_schools)
+        hs, unmatched = partition_jobs(jobs, self._cfg.schools)
         for name in unmatched:
             if name in self._unmatched_seen:
                 continue

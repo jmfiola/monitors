@@ -93,7 +93,14 @@ def make_monitor(
 ) -> tuple[JeffcoMonitor, httpx.AsyncClient]:
     sink = logs if logs is not None else []
     sleep_calls = sleeps if sleeps is not None else []
-    cfg = load_config({"SFE_USER_ID": USER_ID, "SFE_PIN": PIN, "DISCORD_WEBHOOK_URL": WEBHOOK})
+    cfg = load_config(
+        {
+            "JEFFCO_PROFILE": "dad",
+            "SFE_USER_ID": USER_ID,
+            "SFE_PIN": PIN,
+            "DISCORD_WEBHOOK_URL": WEBHOOK,
+        }
+    )
     client = httpx.AsyncClient(transport=httpx.MockTransport(_queue(responses)))
     sfe = SfeClient(
         client=client,
@@ -292,7 +299,14 @@ async def test_outcome_key_survives_temporary_ineligibility_without_duplicate_de
     async def no_sleep(_seconds: float) -> None:
         return None
 
-    cfg = load_config({"SFE_USER_ID": USER_ID, "SFE_PIN": PIN, "DISCORD_WEBHOOK_URL": WEBHOOK})
+    cfg = load_config(
+        {
+            "JEFFCO_PROFILE": "dad",
+            "SFE_USER_ID": USER_ID,
+            "SFE_PIN": PIN,
+            "DISCORD_WEBHOOK_URL": WEBHOOK,
+        }
+    )
     sfe = VisibilitySfe()
     logs: list[str] = []
     accepter = AutoAccepter(

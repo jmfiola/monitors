@@ -29,12 +29,12 @@ async def _main() -> None:
     cfg = load_config(os.environ)
     # Deliberately excludes sfe_user_id: this account's PIN closely resembles its
     # access id, so printing the id would leak most of the PIN's shape into logs
-    # that are not a secret store. `len(cfg.hs_schools)`, not the schools
+    # that are not a secret store. `len(cfg.schools)`, not the schools
     # themselves -- the list is long and not worth a log line of its own.
     auto_accept_state = "enabled" if cfg.auto_accept_enabled else "disabled"
     log(
         f"app config — window={cfg.window_days}d tz={cfg.timezone} "
-        f"schools={len(cfg.hs_schools)} auto_accept={auto_accept_state}"
+        f"schools={len(cfg.schools)} auto_accept={auto_accept_state}"
     )
 
     # This process's owner installs its own signal handlers; the library is a

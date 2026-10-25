@@ -348,3 +348,8 @@ def test_gaps_swap_the_footer_for_the_instruction() -> None:
     assert heartbeat_extras_for(["DORAL ACADEMY"]).footer_text == (
         "If any of these are high schools, add them to HS_SCHOOLS."
     )
+
+
+def test_the_gap_footer_is_the_callers() -> None:
+    extras = heartbeat_extras_for(["X ELE"], footer_text="custom footer")
+    assert extras.footer_text == "custom footer"

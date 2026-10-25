@@ -43,6 +43,10 @@ GAP_VALUE_BUDGET = 1000
 #: which is not known until the split has already been chosen.
 _GAP_SUMMARY_RESERVE = 24
 
+#: Dad's profile's gap-report footer. Mom's lives with her profile in
+#: jeffco.config, because the instruction names the list each profile edits.
+HS_GAP_FOOTER = "If any of these are high schools, add them to HS_SCHOOLS."
+
 
 def _describe(job: Job, date_line: str) -> str:
     """The alert body. This layout -- school as the title, then Subject /
@@ -123,7 +127,9 @@ def format_job_alerts(alerts: Sequence[tuple[Job, str]]) -> list[Message]:
 
 
 def heartbeat_extras_for(
-    unmatched: Sequence[str], budget: int = GAP_VALUE_BUDGET
+    unmatched: Sequence[str],
+    budget: int = GAP_VALUE_BUDGET,
+    footer_text: str = HS_GAP_FOOTER,
 ) -> HeartbeatExtras:
     """The filter-gap report riding on the next heartbeat.
 
@@ -168,5 +174,5 @@ def heartbeat_extras_for(
 
     return HeartbeatExtras(
         fields=(Field(name="Schools not on the list", value=value, inline=False),),
-        footer_text="If any of these are high schools, add them to HS_SCHOOLS.",
+        footer_text=footer_text,
     )
