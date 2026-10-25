@@ -26,12 +26,12 @@ lib/monitor/src/monitor/
 apps/melanzana/src/melanzana/     apps/jeffco/src/jeffco/
 ├── types.py                      ├── types.py     Job, JobDay
 ├── cowlendar.py  source client   ├── sfe.py       source client + auth
-├── detector.py   month + slot    ├── schools.py   the high-school filter
+├── detector.py   month + slot    ├── schools.py   the school filters
 │                 selection       ├── auto_accept.py eligibility, visibility,
 │                                 │                retries, and outcomes
 │                                 ├── dates.py     day/time labels
 ├── alert.py      day-card embed  ├── alert.py     one message per job
-├── config.py                     ├── config.py
+├── config.py                     ├── config.py    profiles (dad, mom)
 ├── monitor.py    the 4 methods   ├── monitor.py   the 4 methods
 └── main.py       wiring          └── main.py      wiring
 
@@ -67,7 +67,7 @@ diff, because the list response cannot express a job that runs Friday and the
 following Monday. Enrichment is therefore necessarily post-diff.
 
 Jeffco's `fetch` implementation also owns automatic acceptance. It performs that
-mutation after its high-school partition and before it returns app-owned items. The
+mutation after its school partition and before it returns app-owned items. The
 `Monitor` protocol and shared runner remain unaware that an action occurred.
 
 **`Message.covers`** names the item keys a message announces. jeffco and FashionJobs
@@ -113,6 +113,38 @@ Two things are outside the library on purpose:
   the 120-second refresh margin is tuned to a 7200-second token. An auth
   abstraction would have exactly one caller.
 
+### Jeffco runs as two profiles
+
+One `jeffco` package and image serve two instances, each logged in to
+SmartFindExpress as a different substitute: Dad's and Mom's. The required
+`JEFFCO_PROFILE` (`dad` or `mom`, exactly) selects a `Profile` defined in
+`config.py`. A profile owns four things: the school filter, the ops labels, the
+gap-report footer, and whether automatic acceptance may be enabled. Everything else
+— the SFE client, the runner, alert rendering, the 45-second poll and the `busy`
+handling — is shared, because both logins are shared with the person using them.
+
+| | `dad` | `mom` |
+| --- | --- | --- |
+| Schools | `DEFAULT_HS_SCHOOLS` ∪ `HS_SCHOOLS` ∪ the high-school pattern | `MOM_SCHOOLS`, exactly |
+| Ops name | `Jeffco sub monitor` | `Jeffco sub monitor (Mom)` |
+| Auto-accept | allowed when `AUTO_ACCEPT_ENABLED` is true | refused at startup |
+
+Neither profile filters on subject. The available-jobs endpoint already returns
+only jobs the account holder is qualified and assigned for, which is where each
+substitute's job types are chosen.
+
+Mom's 19 locations come from her SFE profile and match by `normalize_school_name`
+on both sides, with no pattern: Dad's pattern would accept any high school, which
+is exactly what her list exists to exclude. `ELEMENTARY` folds to SFE's `ELE` so a
+spelled-out name still matches. A misspelled entry cannot be rescued by a pattern,
+so it surfaces as that school's name in her instance's `filter gap:` log. Her
+Discord gap report is mostly schools she has chosen not to take, so it is not where
+a mismatch gets noticed.
+
+The `mom` profile refuses to start on `AUTO_ACCEPT_ENABLED=true`, on a non-empty
+`HS_SCHOOLS` (Dad's additive knob, which would otherwise read as working), and on
+an empty school list. Missing or unknown `JEFFCO_PROFILE` is refused for both.
+
 ## The loop
 
 `run_forever(monitor, cfg)` loads state, fetches, keys, diffs, suppresses on first
@@ -125,7 +157,7 @@ Jeffco performs its mutation inside the app-owned `fetch` path. Its order is:
 
 ```text
 available jobs
-  -> existing high-school partition
+  -> existing high-school partition (dad profile)
   -> exact four-school/subject/full-day/seven-day predicate
   -> bounded PUT + assignment verification
   -> outcome-specific key
@@ -140,7 +172,7 @@ excluded, even when their label includes science. Malformed or missing data fail
 closed. The acceptance decision and mutation finish before the runner can diff,
 render, or deliver Discord messages, so Discord follows the outcome and cannot delay
 the PUT. With automatic acceptance disabled, this path is the old read-only fetch
-behavior.
+behavior. Only the `dad` profile can enable it.
 
 ### FashionJobs reads are transactional and monotonic
 
@@ -309,8 +341,8 @@ clock, not the watched site's.
 The library reads `DISCORD_WEBHOOK_URL`, `STATUS_WEBHOOK_URL`, `STATE_PATH`,
 `POLL_INTERVAL_SEC`, `POLL_JITTER_PCT`, `HEARTBEAT_INTERVAL_SEC`, `HEARTBEAT_AT`,
 `STALL_ALERT_SEC`, and `APP_VERSION`. Each app adds its own on top — jeffco
-`SFE_USER_ID`, `SFE_PIN`,
-`HS_SCHOOLS`, `WINDOW_DAYS`; melanzana its calendar id and `MENTION_EVERYONE`.
+`JEFFCO_PROFILE`, `SFE_USER_ID`, `SFE_PIN`, `AUTO_ACCEPT_ENABLED`, `HS_SCHOOLS`
+(`dad` only), `WINDOW_DAYS`; melanzana its calendar id and `MENTION_EVERYONE`.
 FashionJobs adds only operational settings: its webhook, state path, 600-second poll
 interval, shared 20 percent jitter, and `07:00` heartbeat. Stage, France, all roles,
 and no keywords remain fixed in code.

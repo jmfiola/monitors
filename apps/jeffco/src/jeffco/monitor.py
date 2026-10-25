@@ -53,17 +53,19 @@ class JeffcoMonitor:
         self._unmatched_seen: dict[str, None] = {}
 
     async def fetch(self) -> list[JeffcoItem]:
-        """Every currently-available High School job.
+        """Every currently-available job at one of the profile's schools.
 
         `is_account_busy` re-raises as `SourceBusy` so the runner holds its normal
         cadence instead of escalating backoff -- see jeffco.sfe.is_account_busy for
         why an SFE 400 here means "the account holder is on the site", not a fault.
 
-        Only HS keys ever enter state: `partition_jobs` splits the raw list here
-        and only the HS half is returned, so a non-HS job's id can never be banked
-        as "seen" and cannot be resurrected as "new" by a later edit to the school
-        list. The unmatched half is absorbed into `_unmatched_seen` for the
-        heartbeat's gap report, logging each name only the first time it is seen.
+        Only matching keys ever enter state: `partition_jobs` splits the raw list
+        here by the profile's rule (Dad's high-school list and pattern, or Mom's
+        exact named list) and only the matching half is returned, so an excluded
+        job's id can never be banked as "seen" and cannot be resurrected as "new"
+        by a later edit to the school list. The unmatched half is absorbed into
+        `_unmatched_seen` for the heartbeat's gap report, logging each name only
+        the first time it is seen.
         """
         try:
             jobs = await self._sfe.fetch_available_jobs()
@@ -72,7 +74,7 @@ class JeffcoMonitor:
                 raise SourceBusy(str(err)) from err
             raise
 
-        hs, unmatched = partition_jobs(jobs, self._cfg.schools)
+        hs, unmatched = partition_jobs(jobs, self._cfg.schools, self._cfg.profile.school_match)
         for name in unmatched:
             if name in self._unmatched_seen:
                 continue
@@ -137,7 +139,7 @@ class JeffcoMonitor:
         names = list(self._unmatched_seen)
         if names:
             self._log(f"filter gap: {len(names)} unmatched — {', '.join(names)}")
-        return heartbeat_extras_for(names)
+        return heartbeat_extras_for(names, footer_text=self._cfg.profile.gap_footer)
 
 
 if TYPE_CHECKING:  # a compile-time assertion, no runtime cost, no fake arguments

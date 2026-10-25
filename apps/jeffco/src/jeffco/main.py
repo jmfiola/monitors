@@ -33,7 +33,7 @@ async def _main() -> None:
     # themselves -- the list is long and not worth a log line of its own.
     auto_accept_state = "enabled" if cfg.auto_accept_enabled else "disabled"
     log(
-        f"app config — window={cfg.window_days}d tz={cfg.timezone} "
+        f"app config — profile={cfg.profile.name} window={cfg.window_days}d tz={cfg.timezone} "
         f"schools={len(cfg.schools)} auto_accept={auto_accept_state}"
     )
 

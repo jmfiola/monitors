@@ -18,6 +18,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from jeffco.alert import HS_GAP_FOOTER
 from jeffco.auto_accept import (
     AutoAccepter,
     AutoAcceptItem,
@@ -25,7 +26,7 @@ from jeffco.auto_accept import (
     AutoAcceptStatus,
     JeffcoItem,
 )
-from jeffco.config import load_config
+from jeffco.config import MOM_GAP_FOOTER, load_config
 from jeffco.monitor import JeffcoMonitor
 from jeffco.sfe import SfeClient, SfeHttpError
 from jeffco.types import Job
@@ -90,12 +91,13 @@ def make_monitor(
     *,
     enable_auto_accept: bool = False,
     sleeps: list[float] | None = None,
+    profile: str = "dad",
 ) -> tuple[JeffcoMonitor, httpx.AsyncClient]:
     sink = logs if logs is not None else []
     sleep_calls = sleeps if sleeps is not None else []
     cfg = load_config(
         {
-            "JEFFCO_PROFILE": "dad",
+            "JEFFCO_PROFILE": profile,
             "SFE_USER_ID": USER_ID,
             "SFE_PIN": PIN,
             "DISCORD_WEBHOOK_URL": WEBHOOK,
@@ -167,6 +169,32 @@ async def test_fetch_records_gaps_that_reach_the_heartbeat() -> None:
     # Each name is also logged the first time it is seen -- the logs are where
     # this gets noticed within the day.
     assert any("FOSTER DUAL LANGUAGE PK-8" in line for line in logs)
+
+
+async def test_mom_fetch_keeps_only_her_schools_and_reports_the_rest() -> None:
+    # RALSTON VALLEY HS is what Dad's pattern would keep; under Mom's exact list it
+    # is just another school she does not take, and lands in the gap report.
+    rows = [
+        _job(1, "FAIRMOUNT ELE"),
+        _job(2, "RALSTON VALLEY HS"),
+        _job(3, "FOSTER DUAL LANGUAGE PK-8"),
+    ]
+    monitor, client = make_monitor([*_login_responses(), _json_response(rows)], profile="mom")
+    async with client:
+        items = await monitor.fetch()
+    assert [monitor.key(i) for i in items] == ["1"]
+    extras = monitor.heartbeat_extras()
+    assert extras.fields is not None
+    assert "RALSTON VALLEY HS" in extras.fields[0].value
+    assert "FOSTER DUAL LANGUAGE PK-8" in extras.fields[0].value
+    assert extras.footer_text == MOM_GAP_FOOTER
+
+
+async def test_dad_heartbeat_keeps_the_high_school_footer() -> None:
+    monitor, client = make_monitor([*_login_responses(), _json_response(AVAILABLE_JOBS)])
+    async with client:
+        await monitor.fetch()
+    assert monitor.heartbeat_extras().footer_text == HS_GAP_FOOTER
 
 
 async def test_gaps_accumulate_across_ticks_rather_than_being_replaced() -> None:

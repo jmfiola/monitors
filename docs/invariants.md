@@ -291,9 +291,39 @@ and runner know only about item keys and messages; no action state belongs there
 - The existing single-send-funnel and login-lockout invariants still apply to every
   automatic acceptance request.
 - Automatic acceptance stays on the old read-only path unless
-  `AUTO_ACCEPT_ENABLED` is explicitly true. Missing, false, and unknown values remain
-  disabled.
+  `AUTO_ACCEPT_ENABLED` is explicitly true, and only under the `dad` profile.
+  Missing, false, and unknown values remain disabled.
   - `test_auto_accept_is_disabled_by_default`
+
+## 14a. A Jeffco profile is required, and Mom's filter is exact
+
+`apps/jeffco/src/jeffco/config.py` / `schools.py`
+
+`JEFFCO_PROFILE` has no default. **The tempting simplification is to default to
+`dad`**, since that is what the instance always did. On Mom's instance a forgotten
+variable would then run Dad's high-school filter against her elementary feed: no
+alerts, a healthy heartbeat, and nothing to say why. A missing, miscased, or padded
+value is refused at startup instead.
+
+The `mom` profile matches her named list only. Folding the high-school pattern back
+in looks like harmless over-inclusion, as it is for Dad, but it would alert her on
+every high school in her feed, which is the opposite of what her list says.
+
+Each `mom` refusal is loud because the quiet version reads as working:
+`AUTO_ACCEPT_ENABLED=true` would look enabled while doing nothing, a non-empty
+`HS_SCHOOLS` would look like it added a school, and an empty list would alert on
+nothing forever.
+
+Her misspellings surface in the `filter gap:` *log*, not the Discord field: the
+field is filled mostly by schools she does not take and truncates.
+
+- `test_the_profile_is_required`
+- `test_an_unknown_or_miscased_profile_is_refused`
+- `test_mom_profile_refuses_auto_accept`
+- `test_mom_profile_refuses_hs_schools`
+- `test_a_profile_with_no_schools_refuses_to_start`
+- `test_named_match_ignores_the_high_school_pattern`
+- `test_mom_fetch_keeps_only_her_schools_and_reports_the_rest`
 
 ## 15. FashionJobs' product filter is fixed and proven from every HTML page
 
