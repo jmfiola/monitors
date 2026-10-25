@@ -266,8 +266,10 @@ entries against 78).
 
 Exactly four saved queries exist in Logs Explorer (project `cobs-cloud`, location
 `global`) — `melanzana-monitor-logs`, `jeffco-monitor-logs`, `jeffco-mom-monitor-logs`,
-and `fashionjobs-monitor-logs`, one per app, each carrying the union above with its own
-container name in both halves. There is
+and `fashionjobs-monitor-logs`, one per app, each carrying the union above for its own
+container. The two Jeffco queries match their start events by `name=<container>)`;
+`melanzana-monitor-logs` and `fashionjobs-monitor-logs` match by their image
+(`<image>:v`), which is equally exact while no other app shares those images. There is
 deliberately no fourth, cross-app query.
 
 `--order=asc` is handled by the script rather than passed through, because
