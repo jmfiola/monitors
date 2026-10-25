@@ -329,7 +329,7 @@ changed since the last heartbeat *and* the local time is at or past it. Both
 conditions are needed — the date check is what stops it firing repeatedly all day.
 
 Unset, the interval behaviour applies. The infrastructure config uses `07:00` for
-all three apps: early enough to read over coffee and ahead of most of the day's
+every app: early enough to read over coffee and ahead of most of the day's
 postings.
 
 The zone is pinned in code rather than configurable. Making it an env var only creates
@@ -398,12 +398,14 @@ per app is derived from its key in `infra/apps.auto.tfvars`: unit and container 
 `0600`. Adding an app is a three-line tfvars diff.
 
 FashionJobs has a 128 MiB container cap. Together with Melanzana's 128 MiB and
-Jeffco's 256 MiB, declared app caps total 512 MiB on the roughly 1 GiB `e2-micro`,
-leaving capacity for the OS, Docker, logging, and normal bursts. Between its
+256 MiB for each of the two Jeffco instances, declared app caps total 768 MiB on
+the roughly 1 GiB `e2-micro`. Caps are ceilings, not reservations: each running
+container uses roughly 30 MiB, which leaves capacity for the OS, Docker, logging,
+and normal bursts. Between its
 ten-minute polls it adds only an idle Python process and small HTTP/HTML identity
 state; there is no browser, database, inbound listener, or worker.
 
-All three apps run the same tag, because `lib/monitor` is baked into every image: a
+Every app runs the same tag, because `lib/monitor` is baked into every image: a
 library change has to be rebuilt and rolled out everywhere, or the apps that were
 not rebuilt keep the old behaviour. `infra/apps.auto.tfvars` is committed, so git
 records which tag is deployed. Published images are immutable — rolling back is a

@@ -24,6 +24,15 @@ jeffco_auto_accept_enabled = false
 # jeffco_status_webhook_url = "https://discord.com/api/webhooks/xxxx/zzzz"
 # jeffco_poll_interval_sec  = 45   # lower collides with the account holder's own session
 
+# --- jeffco-mom-monitor (Mom's Jeffco substitute jobs) ---
+# Her own SFE login and alert channel. Status messages reuse
+# jeffco_status_webhook_url above, so there is no second status webhook.
+jeffco_mom_sfe_user_id         = "900002"
+jeffco_mom_sfe_pin             = "xxxxxx"
+jeffco_mom_discord_webhook_url = "https://discord.com/api/webhooks/xxxx/yyyy"
+# jeffco_mom_poll_interval_sec  = 45      # lower collides with her own session
+# jeffco_mom_heartbeat_at       = "07:00" # America/Denver; "" = drift with process start
+
 # --- fashionjobs-monitor (France-wide Stage listings) ---
 fashionjobs_discord_webhook_url = "https://discord.com/api/webhooks/xxxx/yyyy"
 # fashionjobs_status_webhook_url = "https://discord.com/api/webhooks/xxxx/zzzz"

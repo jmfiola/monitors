@@ -24,6 +24,17 @@ apps = {
     memory    = "256m"
   }
 
+  # Mom's instance: the jeffco image from the jeffco repository, so one push
+  # serves both. Rolling the tag back below v2.5.0 must remove this entry in the
+  # same change — an older image ignores JEFFCO_PROFILE and would run Dad's
+  # high-school filter on her account.
+  "jeffco-mom" = {
+    image      = "jeffco-sub-monitor"
+    repository = "jeffco"
+    image_tag  = "v2.5.0"
+    memory     = "256m"
+  }
+
   fashionjobs = {
     image     = "fashionjobs-monitor"
     image_tag = "v2.5.0"

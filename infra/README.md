@@ -30,6 +30,13 @@ For FashionJobs that means `fashionjobs-monitor`, persistent host state at
 `/var/lib/fashionjobs-data/state.json` mounted as `/data/state.json`, and the env file
 `/etc/monitors/fashionjobs.env`.
 
+Mom's Jeffco instance is the `jeffco-mom` key: unit and container
+`jeffco-mom-monitor`, state at `/var/lib/jeffco-mom-data/state.json`, and env file
+`/etc/monitors/jeffco-mom.env`. Its entry sets `repository = "jeffco"`, so it pulls
+the same `jeffco-sub-monitor` image as Dad's instance and needs no push of its own;
+`JEFFCO_PROFILE=mom` in its env selects her school list and refuses auto-accept. Its
+job alerts go to her own webhook and its ops messages to Jeffco's status webhook.
+
 ## Supervision: systemd, not konlet
 
 GCE's `gce-container-declaration` metadata (konlet) supervises **exactly one container
@@ -46,9 +53,12 @@ Consequences worth knowing:
 - **`--memory` per app** is a leak backstop, not a tuning knob — set well above
   normal operation. There is no swap, so without a cap the kernel picks the OOM
   victim, and it may pick a healthy monitor over the leaking one.
-  FashionJobs adds a 128 MiB cap; the three declared caps are 128 MiB, 256 MiB, and
-  128 MiB, or 512 MiB total. That fits the `e2-micro`'s roughly 1 GiB while leaving
-  capacity for Container-Optimized OS, Docker, logging, and normal bursts.
+  The four declared caps are 128 MiB (melanzana), 256 MiB (jeffco), 256 MiB
+  (jeffco-mom), and 128 MiB (fashionjobs), or 768 MiB total on the `e2-micro`'s
+  roughly 1 GiB. Caps are ceilings, not reservations: on 2026-10-25 the three
+  existing containers used 27–35 MiB each with 495 MiB available, so the realistic
+  total stays far below the caps and leaves capacity for Container-Optimized OS,
+  Docker, logging, and normal bursts.
 - **Deploys are selective.** The startup script compares each rendered unit and
   env file against what is on disk and restarts only what changed, so deploying
   one app does not interrupt the others.
@@ -98,6 +108,10 @@ field; Family/Consumer, missing, and unrelated subjects fail closed. Discord rep
 the accepted outcome or an urgent manual-claim failure after the bounded,
 assignment-verified attempt sequence. The decision cache is process-local, so
 restarting Jeffco begins a fresh visibility episode.
+
+`jeffco-mom` never auto-accepts: its env sets `AUTO_ACCEPT_ENABLED=false` explicitly,
+and its `mom` profile refuses to start on `true`. `jeffco_auto_accept_enabled` gates
+Dad's instance only.
 
 `<app>_heartbeat_at` (default `07:00`) fixes that app's heartbeat to an America/Denver
 wall-clock hour. It is wired conditionally, so leaving it empty falls back to
@@ -167,19 +181,23 @@ for pair in melanzana:melanzana-monitor jeffco:jeffco-sub-monitor \
 done
 ```
 
+`jeffco-mom` is deliberately not in the loop: it pulls the `jeffco` push.
+
 Push before bumping the tag in `apps.auto.tfvars`, then `./infra/deploy.sh` — a tag
 the registry does not have yet leaves the startup script with no image to pull.
 
 ### Which tag is deployed
 
-`infra/apps.auto.tfvars` is the answer, and it is committed so git records it. All
-three apps carry the same tag: `lib/monitor` is baked into every image, so a library
+`infra/apps.auto.tfvars` is the answer, and it is committed so git records it. Every
+app carries the same tag: `lib/monitor` is baked into every image, so a library
 change is only live in the apps that were rebuilt for it, and rolling one app forward
 alone leaves the others on the old behaviour.
 
 Published images are immutable. Rolling back is the tag edit in reverse — never a
 rebuild of an already-published tag, which would make "which version is running?"
-unanswerable.
+unanswerable. Rolling back below `v2.5.0` also removes the `jeffco-mom` entry in the
+same change: an older image ignores `JEFFCO_PROFILE` and would run Dad's high-school
+filter on Mom's account, alerting her on nothing.
 
 The verified request profile is the app's configured `Accept: text/html` and
 `User-Agent: fashionjobs-monitor/2.0`; an unrepresentative default-httpx probe was
@@ -229,7 +247,7 @@ OR
 (
   logName="projects/cobs-cloud/logs/cos_system"
   AND jsonPayload.MESSAGE:"container start"
-  AND jsonPayload.MESSAGE:"jeffco-sub-monitor:v"
+  AND jsonPayload.MESSAGE:"name=jeffco-monitor)"
   AND -jsonPayload.MESSAGE:"exec"
 )
 ```
@@ -237,15 +255,19 @@ OR
 Interleaved, that reads as the deploy narrative: `SIGTERM received` → `container start
 (image=…:<tag>)` → `app config` → `started … firstRun=False`.
 
-Two details bite. **The container name and the image name differ for jeffco** — container
-`jeffco-monitor`, image `jeffco-sub-monitor` — so the two halves cannot share one string.
-And **`-exec` is load-bearing**: an ad-hoc `docker exec` into a container also logs the
+Two details bite. **The image does not identify an app**: `jeffco` and `jeffco-mom` both
+run `jeffco-sub-monitor`, so matching the image would put each instance's deploys in the
+other's query. The start event ends `(image=…:<tag>, name=<container>)`, so the
+`cos_system` half matches `name=<container>)` — the closing parenthesis keeps
+`name=jeffco-monitor)` from ever matching a longer container name. And **`-exec` is
+load-bearing**: an ad-hoc `docker exec` into a container also logs the
 image, so without it one memory probe buries the real deploys (measured: 295 matching
 entries against 78).
 
-Exactly three saved queries exist in Logs Explorer (project `cobs-cloud`, location
-`global`) — `melanzana-monitor-logs`, `jeffco-monitor-logs`, and
-`fashionjobs-monitor-logs`, one per app, each carrying the union above. There is
+Exactly four saved queries exist in Logs Explorer (project `cobs-cloud`, location
+`global`) — `melanzana-monitor-logs`, `jeffco-monitor-logs`, `jeffco-mom-monitor-logs`,
+and `fashionjobs-monitor-logs`, one per app, each carrying the union above with its own
+container name in both halves. There is
 deliberately no fourth, cross-app query.
 
 `--order=asc` is handled by the script rather than passed through, because

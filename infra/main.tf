@@ -92,6 +92,26 @@ locals {
       var.jeffco_heartbeat_at != "" ? { HEARTBEAT_AT = var.jeffco_heartbeat_at } : {},
     )
 
+    # Mom's instance of the same image. The profile, not this map, decides her
+    # schools; AUTO_ACCEPT_ENABLED is spelled out because her profile refuses to
+    # start on true. Ops messages share Dad's status channel, so the one status
+    # webhook is reused rather than copied into a second secret.
+    "jeffco-mom" = merge(
+      {
+        JEFFCO_PROFILE         = "mom"
+        SFE_USER_ID            = var.jeffco_mom_sfe_user_id
+        SFE_PIN                = var.jeffco_mom_sfe_pin
+        DISCORD_WEBHOOK_URL    = var.jeffco_mom_discord_webhook_url
+        AUTO_ACCEPT_ENABLED    = "false"
+        STATE_PATH             = "/data/state.json"
+        POLL_INTERVAL_SEC      = tostring(var.jeffco_mom_poll_interval_sec)
+        HEARTBEAT_INTERVAL_SEC = tostring(var.heartbeat_interval_sec)
+        STALL_ALERT_SEC        = tostring(var.stall_alert_sec)
+      },
+      var.jeffco_status_webhook_url != "" ? { STATUS_WEBHOOK_URL = var.jeffco_status_webhook_url } : {},
+      var.jeffco_mom_heartbeat_at != "" ? { HEARTBEAT_AT = var.jeffco_mom_heartbeat_at } : {},
+    )
+
     fashionjobs = merge(
       {
         DISCORD_WEBHOOK_URL    = var.fashionjobs_discord_webhook_url

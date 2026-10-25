@@ -176,6 +176,48 @@ variable "jeffco_heartbeat_at" {
 }
 
 ###############################################################################
+# jeffco-mom-monitor — Mom's Jeffco substitute jobs. Same image as jeffco; her
+# JEFFCO_PROFILE=mom selects her school list. Status messages reuse
+# jeffco_status_webhook_url.
+###############################################################################
+variable "jeffco_mom_sfe_user_id" {
+  description = "Mom's SmartFindExpress access id. Sensitive for the same reason as jeffco_sfe_user_id."
+  type        = string
+  sensitive   = true
+}
+
+variable "jeffco_mom_sfe_pin" {
+  description = "Mom's SmartFindExpress PIN."
+  type        = string
+  sensitive   = true
+}
+
+variable "jeffco_mom_discord_webhook_url" {
+  description = "Discord webhook for Mom's job alerts. A credential — anyone holding it can post."
+  type        = string
+  sensitive   = true
+}
+
+# 45s for the same reason as jeffco_poll_interval_sec: Mom uses the site on the
+# same login, so a faster poll only buys more busy-400 collisions with her.
+variable "jeffco_mom_poll_interval_sec" {
+  description = "Seconds between Mom's jeffco available-jobs polls."
+  type        = number
+  default     = 45
+}
+
+variable "jeffco_mom_heartbeat_at" {
+  type        = string
+  description = "HH:MM America/Denver time for Mom's daily heartbeat. Empty = use HEARTBEAT_INTERVAL_SEC."
+  default     = "07:00"
+
+  validation {
+    condition     = var.jeffco_mom_heartbeat_at == "" || can(regex("^([01][0-9]|2[0-3]):[0-5][0-9]$", var.jeffco_mom_heartbeat_at))
+    error_message = "jeffco_mom_heartbeat_at must be empty or an HH:MM 24-hour time."
+  }
+}
+
+###############################################################################
 # fashionjobs-monitor — France-wide FashionJobs Stage listings.
 ###############################################################################
 variable "fashionjobs_discord_webhook_url" {
