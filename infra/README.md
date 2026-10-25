@@ -270,7 +270,7 @@ and `fashionjobs-monitor-logs`, one per app, each carrying the union above for i
 container. The two Jeffco queries match their start events by `name=<container>)`;
 `melanzana-monitor-logs` and `fashionjobs-monitor-logs` match by their image
 (`<image>:v`), which is equally exact while no other app shares those images. There is
-deliberately no fourth, cross-app query.
+deliberately no cross-app query.
 
 `--order=asc` is handled by the script rather than passed through, because
 `gcloud logging read` **ignores `--freshness` when asked for ascending order** — it
