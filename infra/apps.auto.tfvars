@@ -14,13 +14,13 @@ jeffco_auto_accept_enabled = true
 apps = {
   melanzana = {
     image     = "melanzana-monitor"
-    image_tag = "v2.5.0"
+    image_tag = "v2.6.0"
     memory    = "128m"
   }
 
   jeffco = {
     image     = "jeffco-sub-monitor"
-    image_tag = "v2.5.0"
+    image_tag = "v2.6.0"
     memory    = "256m"
   }
 
@@ -31,13 +31,13 @@ apps = {
   "jeffco-mom" = {
     image      = "jeffco-sub-monitor"
     repository = "jeffco"
-    image_tag  = "v2.5.0"
+    image_tag  = "v2.6.0"
     memory     = "256m"
   }
 
   fashionjobs = {
     image     = "fashionjobs-monitor"
-    image_tag = "v2.5.0"
+    image_tag = "v2.6.0"
     memory    = "128m"
   }
 }
