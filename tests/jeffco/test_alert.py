@@ -163,7 +163,8 @@ def test_renders_the_layout_the_account_holder_was_promised() -> None:
     assert embed.description == (
         "**Subject:** SEC MATH\n"
         "**Dates:** Fri Oct 16 · Mon Oct 19, 7:45 AM – 3:30 PM\n"  # noqa: RUF001
-        "**Teacher:** Jamie Placeholder"
+        "**Teacher:** Jamie Placeholder\n"
+        "**Job ID:** 1"
     )
     assert embed.color == GREEN
 
@@ -353,3 +354,14 @@ def test_gaps_swap_the_footer_for_the_instruction() -> None:
 def test_the_gap_footer_is_the_callers() -> None:
     extras = heartbeat_extras_for(["X ELE"], footer_text="custom footer")
     assert extras.footer_text == "custom footer"
+
+
+def test_every_job_alert_names_its_job_id_even_with_nothing_else_optional() -> None:
+    # SFE has no per-job deep link, so the id is the only handle for finding the
+    # job again on the site. It is the last line, after the optional ones.
+    messages = format_job_alerts(
+        [(Job(job_id=42, location_name="X ELE", job_start="s", job_end="e"), "Mon Oct 19")]
+    )
+    assert messages[0].payload.embeds[0].description == (
+        "**Subject:** Not specified\n**Dates:** Mon Oct 19\n**Job ID:** 42"
+    )

@@ -132,10 +132,9 @@ def test_the_zone_is_not_read_from_the_environment() -> None:
 
 
 def test_the_ops_labels_are_jeffcos() -> None:
-    # These exact strings are parity-critical: the differential harness renders the
-    # heartbeat and both status alerts from them, so a typo here surfaces as a
-    # diff pointing at the library rather than at this line.
-    assert LABELS.name == "Jeffco sub monitor"
+    # Both Jeffco instances post ops messages to one status channel, so each name
+    # says whose monitor it is.
+    assert LABELS.name == "Jeffco sub monitor (Dad)"
     assert LABELS.tracked_noun == "high school job(s)"
     assert LABELS.death_footer == "Liveness alert — check Available Jobs manually until it clears."
     assert load_config(BASE).runner.labels is LABELS

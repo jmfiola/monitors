@@ -49,9 +49,10 @@ HS_GAP_FOOTER = "If any of these are high schools, add them to HS_SCHOOLS."
 
 
 def _describe(job: Job, date_line: str) -> str:
-    """The alert body. This layout -- school as the title, then Subject /
-    Dates / Teacher as labeled lines -- is the one the account holder was
-    shown in docs/for-dad.txt, so it renders what he was promised.
+    """The alert body: school as the title, then Subject / Dates / Teacher as
+    labeled lines -- the layout the account holder was shown in docs/for-dad.txt
+    -- and last the Job ID. SFE has no per-job deep link, so the id is the only
+    handle for finding the same job again on the site.
 
     Labeled lines in one description rather than embed fields: fields reflow
     into columns on desktop and reorder relative to the description, and this
@@ -64,6 +65,7 @@ def _describe(job: Job, date_line: str) -> str:
     # FULL is the overwhelming majority; naming it on every alert would be noise.
     if job.duration_type and job.duration_type != "FULL":
         lines.append(f"**Duration:** {job.duration_type}")
+    lines.append(f"**Job ID:** {job.job_id}")
     return "\n".join(lines)
 
 
@@ -71,7 +73,6 @@ def format_auto_accept_alert(item: AutoAcceptItem, date_line: str) -> Message:
     accepted = item.outcome.status is AutoAcceptStatus.ACCEPTED
     status = "Automatically accepted" if accepted else "Auto-accept failed — claim manually"
     lines = [f"**Status:** {status}", _describe(item.job, date_line)]
-    lines.append(f"**Job ID:** {item.job.job_id}")
     if item.outcome.detail is not None:
         lines.append(f"**Failure:** {item.outcome.detail}")
     return Message(

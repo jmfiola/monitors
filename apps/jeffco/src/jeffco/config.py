@@ -24,14 +24,14 @@ from jeffco.schools import DEFAULT_HS_SCHOOLS, MOM_SCHOOLS, SchoolMatch, parse_s
 #: repeating the string in a print().
 LOG_PREFIX = "jeffco-sub-monitor"
 
+#: Both Jeffco instances post ops messages to one status channel, so each name
+#: says whose monitor it is.
 LABELS = OpsLabels(
-    name="Jeffco sub monitor",
+    name="Jeffco sub monitor (Dad)",
     tracked_noun="high school job(s)",
     death_footer="Liveness alert — check Available Jobs manually until it clears.",
 )
 
-#: Mom's ops messages land in the same status channel as Dad's, so the name is
-#: what tells the two heartbeats apart.
 MOM_LABELS = OpsLabels(
     name="Jeffco sub monitor (Mom)",
     tracked_noun="job(s) at Mom's schools",
