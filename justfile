@@ -30,7 +30,7 @@ format:
 # Run the standard local validation suite.
 check: test typecheck lint format-check
 
-# Compare Melanzana and Jeffco output with their TypeScript implementations.
+# Compare Melanzana output with its TypeScript implementation.
 parity:
     ./tools/parity-diff.sh
 

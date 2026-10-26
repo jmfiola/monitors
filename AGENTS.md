@@ -18,7 +18,7 @@ Use the root `justfile` as the command interface:
 - `just typecheck`, `just lint`, and `just format-check` run individual checks.
 - `just format` formats Python files.
 - `just check` runs the standard local validation suite.
-- `just parity` compares Melanzana and Jeffco payloads with sibling TypeScript repos.
+- `just parity` compares Melanzana payloads with its sibling TypeScript repo.
 - `just infra-plan` previews infrastructure changes without applying them.
 - `just infra-verify` checks the live host without changing it.
 - `just logs <app> [gcloud args...]` reads one app's production logs.
@@ -33,8 +33,8 @@ If `just` is unavailable, feel free to install it.
 - Prefer a focused test while developing, for example
   `just test tests/fashionjobs/test_site.py -k pagination`.
 - Run `just check` before declaring a change complete.
-- `just parity` is intentionally separate from `just check`: it needs Node and sibling
-  Melanzana and Jeffco repositories. FashionJobs is covered by Python fixtures and tests.
+- `just parity` is intentionally separate from `just check`: it needs Node and the sibling
+  Melanzana repository. Jeffco and FashionJobs are covered by Python fixtures and tests.
 
 ## Production safety
 

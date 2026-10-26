@@ -126,7 +126,7 @@ handling — is shared, because both logins are shared with the person using the
 | | `dad` | `mom` |
 | --- | --- | --- |
 | Schools | `DEFAULT_HS_SCHOOLS` ∪ `HS_SCHOOLS` ∪ the high-school pattern | `MOM_SCHOOLS`, exactly |
-| Ops name | `Jeffco sub monitor` | `Jeffco sub monitor (Mom)` |
+| Ops name | `Jeffco sub monitor (Dad)` | `Jeffco sub monitor (Mom)` |
 | Auto-accept | allowed when `AUTO_ACCEPT_ENABLED` is true | refused at startup |
 
 Neither profile filters on subject. The available-jobs endpoint already returns
@@ -365,24 +365,26 @@ rather than polling forever with nowhere to report.
 
 ```bash
 just check     # test, typecheck, lint, format-check
-just parity    # needs node + the sibling repos
+just parity    # needs node + the sibling melanzana repo
 ```
 
 `pytest` covers the library and all three apps against committed fixtures, on pinned
 epochs — never a live clock, so a test cannot pass only until the first of the month.
 
-**`parity-diff.sh` is the strongest Melanzana/Jeffco check.** Those two apps have
-TypeScript reference implementations in sibling repos. The harness renders every
-Discord payload each implementation can produce, on a frozen clock, as canonical
-JSON, and the diff must be empty. It catches what unit tests miss: field ordering,
-number formatting, the
-`allowed_mentions` pairing, and the exact en dash in a time range.
+**`parity-diff.sh` is the strongest Melanzana check.** Melanzana has a TypeScript
+reference implementation in a sibling repo. The harness renders every item-alert
+payload each implementation can produce, on a frozen clock, as canonical JSON, and the
+diff must be empty. It catches what unit tests miss: field ordering, number
+formatting, and the `allowed_mentions` pairing.
 
-FashionJobs has no TypeScript reference implementation and remains outside the parity
-harness. Its exact HTML, source, transaction, and Discord behavior is held by the
-committed Python fixtures and focused tests.
+Jeffco and FashionJobs are outside the parity harness. Jeffco's alerts carry a
+`Job ID` line its TypeScript reference does not, so a comparison could only be a
+permanent diff; its exact rendering, including the en dash in a time range, is held by
+`tests/jeffco/test_alert.py`. FashionJobs has no TypeScript reference; its exact HTML,
+source, transaction, and Discord behavior is held by the committed Python fixtures and
+focused tests.
 
-It is not part of `pytest` because it needs those sibling repos and a node toolchain.
+It is not part of `pytest` because it needs the sibling repo and a node toolchain.
 What makes an empty diff meaningful, and what must never be added to it, is in
 [invariants.md](invariants.md).
 

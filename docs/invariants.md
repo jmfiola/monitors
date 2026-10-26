@@ -241,10 +241,12 @@ an account with a lockout policy.
 
 `%a`/`%b` are locale-dependent, and `%-I` (hour with no leading zero) is a glibc/BSD
 extension Python does not guarantee. Explicit `WEEKDAYS`/`MONTHS` tuples with the hour,
-minute and meridiem assembled by hand are what the parity harness proves byte-identical.
+minute and meridiem assembled by hand are what keep the labels identical on every host;
+for Melanzana the parity harness also proves them byte-identical to the TypeScript.
 
-`_RANGE_SEP` is an en dash (U+2013) and the day separator is `·` (U+00B7). Both are
-contracts with the reference output, not typography.
+Jeffco's `_RANGE_SEP` is an en dash (U+2013) and its day separator is `·` (U+00B7).
+`tests/jeffco/test_alert.py` pins both in the exact alert text; they are the format the
+account holders read, not incidental typography.
 
 The ordinary rendering assertions run under the host locale and therefore do not, by
 themselves, enforce this rule. The locale test switches `LC_TIME` to each available
@@ -489,9 +491,10 @@ pairing turns an upstream title such as `@everyone` into a channel-wide ping.
 produce, on a frozen clock, and requires an empty diff. Three properties make that
 meaningful, and all three are easy to destroy:
 
-“Both implementations” means only the Melanzana and Jeffco Python/TypeScript pairs.
-FashionJobs has no sibling TypeScript implementation and must not be added to this
-harness; its committed fixtures and Python tests own that scope.
+“Both implementations” means only the Melanzana Python/TypeScript pair. Jeffco's alerts
+carry a `Job ID` line its TypeScript reference does not, so a Jeffco case could only be a
+permanent diff; `tests/jeffco/test_alert.py` owns its exact rendering. FashionJobs has no
+sibling TypeScript implementation. Neither may be added to this harness.
 
 **No expected output is written down on either side.** Every literal in both dump scripts
 is an *input* — item fields, epochs, clock integers, fixture names — or an import from
@@ -510,26 +513,17 @@ destroys the meaning of an empty one. Currently excluded on purpose:
   permanent diff. This retired the busy case's older, narrower exclusion along with the
   rest, and it costs something: `LABELS` used to be *imported* by the dump scripts, so the
   harness caught drift in the ops wording too. It no longer does — the label assertions in
-  `tests/jeffco/test_alert.py` and `tests/lib/test_discord.py` hold that now.
-- **No shape-valid impossible date** (e.g. `2026-02-30`). `Date.parse` rolls it over to
-  March 2 and renders a plausible wrong day; Python raises and degrades. `not-a-date` is
-  used instead, which *both* reject, so both degrade and the bytes match. Do not
-  "strengthen" it.
+  `tests/melanzana/test_config.py` and `tests/lib/test_discord.py` hold that now.
 
 **Keep floats out of payloads.** These two serializers agree on everything tested except
 one thing: a whole-valued float prints `3.0` in Python and `3` in Node. Nothing
 float-valued reaches a payload today. The first one that does will produce a diff that
 reads like a regression.
 
-Also: a naive `jobStart` (no UTC offset) is interpreted in the **host** timezone. That
-looks like a bug and is what makes the two implementations agree — both treat a naive
-datetime as local. Forcing UTC would *create* a divergence. Real SFE always sends `Z`.
-
-The harness must be able to fail. It has been broken on purpose by changing the en dash to
-a hyphen and by reversing per-job message order — each gives a non-empty diff and a
-non-zero exit. If you change it, re-prove that. `drop_retired` has been re-proved this
-way: with the en dash mutated to a hyphen the harness still exits non-zero, so filtering
-the retired ops cases out of both sides does not blunt it for the cases that remain.
+The harness must be able to fail. Uppercasing Melanzana's `WEEKDAYS` table gives a
+non-empty diff and a non-zero exit, with `drop_retired` filtering the retired ops cases out
+of both sides, so the filter does not blunt it for the cases that remain. If you change the
+harness, re-prove that.
 
 ---
 

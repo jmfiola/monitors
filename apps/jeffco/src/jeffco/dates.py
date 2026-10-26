@@ -35,8 +35,8 @@ MONTHS = (
     "Dec",
 )
 
-# U+2013 (EN DASH), matching the TypeScript's time/day ranges -- not a hyphen.
-_RANGE_SEP = "–"  # noqa: RUF001 -- intentional, contract with the TypeScript output
+# U+2013 (EN DASH) in time/day ranges -- not a hyphen. Pinned by test_alert.py.
+_RANGE_SEP = "–"  # noqa: RUF001 -- intentional en dash
 # U+00B7 (MIDDLE DOT), joining day labels: "Fri Oct 16 <dot> Mon Oct 19".
 _DAY_SEP = "·"
 
