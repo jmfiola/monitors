@@ -18,11 +18,8 @@ account holder works at as a bare "JEFFERSON ACADEMY", which matches neither
 and appeared only in the heartbeat's gap report. It is listed under the spelling
 the API actually sends, because that is the string the filter compares.
 
-MOM_SCHOOLS is the second instance's list, copied from Mom's SFE profile with
-its district codes alongside (again, not in the API). Her profile matches it
-exactly, with no pattern, so the asymmetry above inverts for her: an entry the
-feed spells differently is not rescued by a pattern, and shows up only in her
-instance's filter-gap log rather than as an alert.
+Mom's profile does not come through here at all: it has no school filter, and
+every job SFE returns for her account is hers (see jeffco.config.MOM).
 """
 
 from __future__ import annotations
@@ -58,30 +55,6 @@ DEFAULT_HS_SCHOOLS: tuple[str, ...] = (
     "GREEN MOUNTAIN HIGH SCHOOL",
     "JEFFERSON JUNIOR/SENIOR",
     "JEFFERSON ACADEMY",
-)
-
-#: Mom's locations, verbatim from her SFE profile. The codes are hers for
-#: reference only; nothing matches on them.
-MOM_SCHOOLS: tuple[str, ...] = (
-    "EXCEL ACADEMY",  # 155300
-    "FAIRMOUNT ELE",  # 114000
-    "FREMONT ELE",  # 116000
-    "HACKBERRY HILL ELE",  # 118800
-    "LAWRENCE ELE",  # 123000
-    "LINCOLN ACADEMY",  # 155800
-    "LITTLE ELE",  # 123500
-    "MAPLE GROVE ELE",  # 125100
-    "MEIKLEJOHN ELE",  # 126500
-    "SECREST ELE",  # 140000
-    "SEMPER ELE",  # 140100
-    "SIERRA ELE",  # 140500
-    "STOTT ELE",  # 138200
-    "THREE CREEKS K-8",  # 143700
-    "VAN ARSDALE ELE",  # 144200
-    "VANDERHOOF ELE",  # 144000
-    "WARDER ELE",  # 144800
-    "WEBER ELE",  # 145200
-    "WEST WOODS ELE",  # 147700
 )
 
 
@@ -172,7 +145,7 @@ def partition_jobs(
     The unmatched list is the gap report: it is how a school whose name says
     nothing about grade level (DORAL ACADEMY, WARREN TECH) gets discovered instead
     of silently missed. Raw spellings are returned so they can be pasted into
-    DEFAULT_HS_SCHOOLS or MOM_SCHOOLS verbatim.
+    DEFAULT_HS_SCHOOLS verbatim.
     """
     kept: list[Job] = []
     unmatched: set[str] = set()

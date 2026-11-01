@@ -26,12 +26,12 @@ from jeffco.auto_accept import (
     AutoAcceptStatus,
     JeffcoItem,
 )
-from jeffco.config import MOM_GAP_FOOTER, load_config
+from jeffco.config import load_config
 from jeffco.monitor import JeffcoMonitor
 from jeffco.sfe import SfeClient, SfeHttpError
 from jeffco.types import Job
 from monitor.runner import run_tick
-from monitor.types import Payload, SourceBusy
+from monitor.types import HeartbeatExtras, Payload, SourceBusy
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LOGIN_HTML = (FIXTURES / "login-page.html").read_text(encoding="utf-8")
@@ -171,23 +171,28 @@ async def test_fetch_records_gaps_that_reach_the_heartbeat() -> None:
     assert any("FOSTER DUAL LANGUAGE PK-8" in line for line in logs)
 
 
-async def test_mom_fetch_keeps_only_her_schools_and_reports_the_rest() -> None:
-    # RALSTON VALLEY HS is what Dad's pattern would keep; under Mom's exact list it
-    # is just another school she does not take, and lands in the gap report.
+async def test_mom_fetch_keeps_every_job_in_her_feed() -> None:
+    # Her SFE account settings decide what reaches her feed, so nothing here is
+    # filtered: not the high school Dad's pattern would keep, not the elementary
+    # campuses outside the list she once had, not a school no list ever named.
     rows = [
         _job(1, "FAIRMOUNT ELE"),
         _job(2, "RALSTON VALLEY HS"),
-        _job(3, "FOSTER DUAL LANGUAGE PK-8"),
+        _job(3, "KYFFIN ELE"),
+        _job(4, "LUKAS ELE"),
+        _job(5, "RALSTON ELE"),
+        _job(6, "SHELTON ELE"),
+        _job(7, "FOSTER DUAL LANGUAGE PK-8"),
     ]
-    monitor, client = make_monitor([*_login_responses(), _json_response(rows)], profile="mom")
+    logs: list[str] = []
+    monitor, client = make_monitor([*_login_responses(), _json_response(rows)], logs, profile="mom")
     async with client:
         items = await monitor.fetch()
-    assert [monitor.key(i) for i in items] == ["1"]
-    extras = monitor.heartbeat_extras()
-    assert extras.fields is not None
-    assert "RALSTON VALLEY HS" in extras.fields[0].value
-    assert "FOSTER DUAL LANGUAGE PK-8" in extras.fields[0].value
-    assert extras.footer_text == MOM_GAP_FOOTER
+    assert [monitor.key(i) for i in items] == ["1", "2", "3", "4", "5", "6", "7"]
+    # Nothing is unmatched, so there is no gap report and the heartbeat keeps
+    # the library's default footer.
+    assert monitor.heartbeat_extras() == HeartbeatExtras()
+    assert not any("filter gap" in line for line in logs)
 
 
 async def test_dad_heartbeat_keeps_the_high_school_footer() -> None:

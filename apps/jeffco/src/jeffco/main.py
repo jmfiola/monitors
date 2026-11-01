@@ -14,7 +14,7 @@ from monitor.timing import system_now
 from monitor.types import Payload
 
 from jeffco.auto_accept import AutoAccepter
-from jeffco.config import LOG_PREFIX, load_config
+from jeffco.config import LOG_PREFIX, JeffcoConfig, load_config
 from jeffco.monitor import JeffcoMonitor
 from jeffco.sfe import SfeClient
 
@@ -25,17 +25,27 @@ HTTP_TIMEOUT_SEC = 20.0
 log = make_log(LOG_PREFIX)
 
 
+def config_summary(cfg: JeffcoConfig) -> str:
+    """The startup `app config` line.
+
+    Deliberately excludes sfe_user_id: this account's PIN closely resembles its
+    access id, so printing the id would leak most of the PIN's shape into logs
+    that are not a secret store. `len(cfg.schools)`, not the schools themselves
+    -- the list is long and not worth a log line of its own. A profile with no
+    school filter says so in words, never as `schools=0`, which would read as a
+    filter that matches nothing.
+    """
+    schools = "unfiltered" if cfg.profile.school_match is None else str(len(cfg.schools))
+    auto_accept_state = "enabled" if cfg.auto_accept_enabled else "disabled"
+    return (
+        f"app config — profile={cfg.profile.name} window={cfg.window_days}d tz={cfg.timezone} "
+        f"schools={schools} auto_accept={auto_accept_state}"
+    )
+
+
 async def _main() -> None:
     cfg = load_config(os.environ)
-    # Deliberately excludes sfe_user_id: this account's PIN closely resembles its
-    # access id, so printing the id would leak most of the PIN's shape into logs
-    # that are not a secret store. `len(cfg.schools)`, not the schools
-    # themselves -- the list is long and not worth a log line of its own.
-    auto_accept_state = "enabled" if cfg.auto_accept_enabled else "disabled"
-    log(
-        f"app config — profile={cfg.profile.name} window={cfg.window_days}d tz={cfg.timezone} "
-        f"schools={len(cfg.schools)} auto_accept={auto_accept_state}"
-    )
+    log(config_summary(cfg))
 
     # This process's owner installs its own signal handlers; the library is a
     # loop, not a supervisor.

@@ -53,15 +53,16 @@ class JeffcoMonitor:
         self._unmatched_seen: dict[str, None] = {}
 
     async def fetch(self) -> list[JeffcoItem]:
-        """Every currently-available job at one of the profile's schools.
+        """Every currently-available job the profile alerts on.
 
         `is_account_busy` re-raises as `SourceBusy` so the runner holds its normal
         cadence instead of escalating backoff -- see jeffco.sfe.is_account_busy for
         why an SFE 400 here means "the account holder is on the site", not a fault.
 
-        Only matching keys ever enter state: `partition_jobs` splits the raw list
-        here by the profile's rule (Dad's high-school list and pattern, or Mom's
-        exact named list) and only the matching half is returned, so an excluded
+        Mom's profile has no school filter, so every job is returned and nothing
+        is ever unmatched. For a filtering profile (Dad's high-school list and
+        pattern), only matching keys ever enter state: `partition_jobs` splits the
+        raw list here and only the matching half is returned, so an excluded
         job's id can never be banked as "seen" and cannot be resurrected as "new"
         by a later edit to the school list. The unmatched half is absorbed into
         `_unmatched_seen` for the heartbeat's gap report, logging each name only
@@ -74,16 +75,20 @@ class JeffcoMonitor:
                 raise SourceBusy(str(err)) from err
             raise
 
-        hs, unmatched = partition_jobs(jobs, self._cfg.schools, self._cfg.profile.school_match)
+        match = self._cfg.profile.school_match
+        if match is None:
+            kept, unmatched = list(jobs), list[str]()
+        else:
+            kept, unmatched = partition_jobs(jobs, self._cfg.schools, match)
         for name in unmatched:
             if name in self._unmatched_seen:
                 continue
             self._unmatched_seen[name] = None
             self._log(f'filter gap: "{name}" matched neither the school list nor the pattern')
         if self._auto_accepter is None:
-            items: list[JeffcoItem] = list(hs)
+            items: list[JeffcoItem] = list(kept)
             return items
-        return await self._auto_accepter.reconcile(hs)
+        return await self._auto_accepter.reconcile(kept)
 
     def key(self, item: JeffcoItem) -> str:
         """The job id alone -- deliberately not a content hash.
@@ -139,7 +144,7 @@ class JeffcoMonitor:
         names = list(self._unmatched_seen)
         if names:
             self._log(f"filter gap: {len(names)} unmatched — {', '.join(names)}")
-        return heartbeat_extras_for(names, footer_text=self._cfg.profile.gap_footer)
+        return heartbeat_extras_for(names)
 
 
 if TYPE_CHECKING:  # a compile-time assertion, no runtime cost, no fake arguments

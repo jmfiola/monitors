@@ -5,7 +5,6 @@ from typing import Any
 import pytest
 from jeffco.schools import (
     DEFAULT_HS_SCHOOLS,
-    MOM_SCHOOLS,
     SchoolMatch,
     is_high_school,
     matches_school,
@@ -16,7 +15,8 @@ from jeffco.schools import (
 from jeffco.types import Job
 
 ALLOW = parse_school_list("\n".join(DEFAULT_HS_SCHOOLS))
-MOM_ALLOW = parse_school_list("\n".join(MOM_SCHOOLS))
+#: A named list for exercising SchoolMatch.NAMED. No profile uses NAMED today.
+NAMED_ALLOW = parse_school_list("FAIRMOUNT ELE\nTHREE CREEKS K-8")
 NONE: set[str] = set()
 
 # The campuses whose names say nothing about grade level. Everything else in
@@ -281,61 +281,33 @@ def test_exactly_the_shipped_pattern_blind_schools_need_the_allow_list() -> None
         assert is_high_school(name, allow) is True
 
 
-# --- Mom's named list ---------------------------------------------------------
-
-
-def test_mom_schools_are_her_nineteen_profile_locations() -> None:
-    assert MOM_SCHOOLS == (
-        "EXCEL ACADEMY",
-        "FAIRMOUNT ELE",
-        "FREMONT ELE",
-        "HACKBERRY HILL ELE",
-        "LAWRENCE ELE",
-        "LINCOLN ACADEMY",
-        "LITTLE ELE",
-        "MAPLE GROVE ELE",
-        "MEIKLEJOHN ELE",
-        "SECREST ELE",
-        "SEMPER ELE",
-        "SIERRA ELE",
-        "STOTT ELE",
-        "THREE CREEKS K-8",
-        "VAN ARSDALE ELE",
-        "VANDERHOOF ELE",
-        "WARDER ELE",
-        "WEBER ELE",
-        "WEST WOODS ELE",
-    )
-
-
-def test_mom_schools_have_no_duplicates_once_normalized() -> None:
-    assert len(MOM_ALLOW) == len(MOM_SCHOOLS) == 19
+# --- The named-list match ---------------------------------------------------
 
 
 def test_named_match_ignores_the_high_school_pattern() -> None:
-    # The pattern would accept this campus for Dad; Mom's list never names it.
-    assert matches_school("RALSTON VALLEY HS", MOM_ALLOW, SchoolMatch.NAMED) is False
+    # The pattern would accept this campus; a named list that omits it does not.
+    assert matches_school("RALSTON VALLEY HS", NAMED_ALLOW, SchoolMatch.NAMED) is False
     assert matches_school("RALSTON VALLEY HS", ALLOW, SchoolMatch.HIGH_SCHOOL) is True
-    assert matches_school("FAIRMOUNT ELE", MOM_ALLOW, SchoolMatch.NAMED) is True
-    assert matches_school("fairmount  ele", MOM_ALLOW, SchoolMatch.NAMED) is True
+    assert matches_school("FAIRMOUNT ELE", NAMED_ALLOW, SchoolMatch.NAMED) is True
+    assert matches_school("fairmount  ele", NAMED_ALLOW, SchoolMatch.NAMED) is True
 
 
 def test_named_match_survives_the_k8_hyphen() -> None:
-    assert matches_school("THREE CREEKS K-8", MOM_ALLOW, SchoolMatch.NAMED) is True
+    assert matches_school("THREE CREEKS K-8", NAMED_ALLOW, SchoolMatch.NAMED) is True
 
 
 def test_named_match_folds_a_spelled_out_elementary() -> None:
-    # Her list uses SFE's ELE abbreviation; a feed or roster spelling it out must
-    # still match rather than silently dropping her job.
+    # A list in SFE's ELE abbreviation must still match a feed or roster that
+    # spells it out, rather than silently dropping the job.
     assert normalize_school_name("Fairmount Elementary School") == "FAIRMOUNT ELE"
-    assert matches_school("FAIRMOUNT ELEMENTARY", MOM_ALLOW, SchoolMatch.NAMED) is True
+    assert matches_school("FAIRMOUNT ELEMENTARY", NAMED_ALLOW, SchoolMatch.NAMED) is True
 
 
 @pytest.mark.parametrize(
     "name", ["FOSTER DUAL LANGUAGE PK-8", "SOMEWHERE ELE", "SOMEWHERE ELEMENTARY"]
 )
 def test_named_match_excludes_unlisted_schools(name: str) -> None:
-    assert matches_school(name, MOM_ALLOW, SchoolMatch.NAMED) is False
+    assert matches_school(name, NAMED_ALLOW, SchoolMatch.NAMED) is False
 
 
 def test_the_elementary_fold_never_makes_a_high_school() -> None:
@@ -348,6 +320,6 @@ def test_partition_named_keeps_only_listed_schools_and_reports_the_rest() -> Non
         job("RALSTON VALLEY HS", 2),
         job("FOSTER DUAL LANGUAGE PK-8", 3),
     ]
-    kept, unmatched = partition_jobs(jobs, MOM_ALLOW, SchoolMatch.NAMED)
+    kept, unmatched = partition_jobs(jobs, NAMED_ALLOW, SchoolMatch.NAMED)
     assert [j.job_id for j in kept] == [1]
     assert unmatched == ["FOSTER DUAL LANGUAGE PK-8", "RALSTON VALLEY HS"]

@@ -297,35 +297,35 @@ and runner know only about item keys and messages; no action state belongs there
   Missing, false, and unknown values remain disabled.
   - `test_auto_accept_is_disabled_by_default`
 
-## 14a. A Jeffco profile is required, and Mom's filter is exact
+## 14a. A Jeffco profile is required, and "no filter" is explicit
 
-`apps/jeffco/src/jeffco/config.py` / `schools.py`
+`apps/jeffco/src/jeffco/config.py` / `monitor.py` / `main.py`
 
 `JEFFCO_PROFILE` has no default. **The tempting simplification is to default to
 `dad`.** On Mom's instance a forgotten variable would then run Dad's high-school
-filter against her elementary feed: no alerts, a healthy heartbeat, and nothing to
-say why. A missing, miscased, or padded
-value is refused at startup instead.
+filter against her feed: almost no alerts, a healthy heartbeat, and nothing to say
+why. A missing, miscased, or padded value is refused at startup instead.
 
-The `mom` profile matches her named list only. Folding the high-school pattern back
-in looks like harmless over-inclusion, as it is for Dad, but it would alert her on
-every high school in her feed, which is the opposite of what her list says.
+The `mom` profile has no school filter: every job in her feed alerts. **The tempting
+way to express that is an empty school list.** Under a filter an empty list matches
+nothing, so the same edit that means "everything" would alert on nothing forever
+while the heartbeat reads healthy. "No filter" is `school_match=None`, set in code,
+and `load_config` refuses both mismatches: a filtering profile with no schools, and
+an unfiltered profile that lists schools (a list there looks like a filter and does
+nothing). The startup line says `schools=unfiltered` rather than `schools=0`.
 
 Each `mom` refusal is loud because the quiet version reads as working:
-`AUTO_ACCEPT_ENABLED=true` would look enabled while doing nothing, a non-empty
-`HS_SCHOOLS` would look like it added a school, and an empty list would alert on
-nothing forever.
-
-Her misspellings surface in the `filter gap:` *log*, not the Discord field: the
-field is filled mostly by schools she does not take and truncates.
+`AUTO_ACCEPT_ENABLED=true` would look enabled while doing nothing, and a non-empty
+`HS_SCHOOLS` would look like it added a school.
 
 - `test_the_profile_is_required`
 - `test_an_unknown_or_miscased_profile_is_refused`
 - `test_mom_profile_refuses_auto_accept`
 - `test_mom_profile_refuses_hs_schools`
-- `test_a_profile_with_no_schools_refuses_to_start`
-- `test_named_match_ignores_the_high_school_pattern`
-- `test_mom_fetch_keeps_only_her_schools_and_reports_the_rest`
+- `test_a_filtering_profile_with_no_schools_refuses_to_start`
+- `test_an_unfiltered_profile_with_schools_refuses_to_start`
+- `test_mom_fetch_keeps_every_job_in_her_feed`
+- `test_mom_config_summary_says_she_is_unfiltered`
 
 ## 15. FashionJobs' product filter is fixed and proven from every HTML page
 

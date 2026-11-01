@@ -177,7 +177,7 @@ variable "jeffco_heartbeat_at" {
 
 ###############################################################################
 # jeffco-mom-monitor — Mom's Jeffco substitute jobs. Same image as jeffco; her
-# JEFFCO_PROFILE=mom selects her school list. Status messages reuse
+# JEFFCO_PROFILE=mom alerts every job in her feed. Status messages reuse
 # jeffco_status_webhook_url.
 ###############################################################################
 variable "jeffco_mom_sfe_user_id" {

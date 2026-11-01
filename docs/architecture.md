@@ -118,14 +118,14 @@ Two things are outside the library on purpose:
 One `jeffco` package and image serve two instances, each logged in to
 SmartFindExpress as a different substitute: Dad's and Mom's. The required
 `JEFFCO_PROFILE` (`dad` or `mom`, exactly) selects a `Profile` defined in
-`config.py`. A profile owns four things: the school filter, the ops labels, the
-gap-report footer, and whether automatic acceptance may be enabled. Everything else
-— the SFE client, the runner, alert rendering, the 45-second poll and the `busy`
-handling — is shared, because both logins are shared with the person using them.
+`config.py`. A profile owns three things: the school filter, the ops labels, and
+whether automatic acceptance may be enabled. Everything else — the SFE client, the
+runner, alert rendering, the 45-second poll and the `busy` handling — is shared,
+because both logins are shared with the person using them.
 
 | | `dad` | `mom` |
 | --- | --- | --- |
-| Schools | `DEFAULT_HS_SCHOOLS` ∪ `HS_SCHOOLS` ∪ the high-school pattern | `MOM_SCHOOLS`, exactly |
+| Schools | `DEFAULT_HS_SCHOOLS` ∪ `HS_SCHOOLS` ∪ the high-school pattern | none: every job in her feed |
 | Ops name | `Jeffco sub monitor (Dad)` | `Jeffco sub monitor (Mom)` |
 | Auto-accept | allowed when `AUTO_ACCEPT_ENABLED` is true | refused at startup |
 
@@ -133,17 +133,19 @@ Neither profile filters on subject. The available-jobs endpoint already returns
 only jobs the account holder is qualified and assigned for, which is where each
 substitute's job types are chosen.
 
-Mom's 19 locations come from her SFE profile and match by `normalize_school_name`
-on both sides, with no pattern: Dad's pattern would accept any high school, which
-is exactly what her list exists to exclude. `ELEMENTARY` folds to SFE's `ELE` so a
-spelled-out name still matches. A misspelled entry cannot be rescued by a pattern,
-so it surfaces as that school's name in her instance's `filter gap:` log. Her
-Discord gap report is mostly schools she has chosen not to take, so it is not where
-a mismatch gets noticed.
+Mom's profile has no school filter: `school_match` is `None`, so `fetch` returns
+every job SFE lists for her account and never calls `partition_jobs`. Which jobs
+reach her feed is decided by her SFE account settings, not by this monitor. With
+nothing unmatched she has no `filter gap:` log lines and no gap report, so her
+heartbeat carries the library's default footer. Her startup line reads
+`schools=unfiltered`.
 
-The `mom` profile refuses to start on `AUTO_ACCEPT_ENABLED=true`, on a non-empty
-`HS_SCHOOLS` (Dad's additive knob, which would otherwise read as working), and on
-an empty school list. Missing or unknown `JEFFCO_PROFILE` is refused for both.
+"No filter" is the explicit `None`, never an empty list. An empty list under a
+filter matches nothing, so `load_config` refuses a filtering profile with no schools
+and an unfiltered profile that lists any. The `mom` profile also refuses
+`AUTO_ACCEPT_ENABLED=true` and a non-empty `HS_SCHOOLS` (Dad's additive knob, which
+would otherwise read as working). Missing or unknown `JEFFCO_PROFILE` is refused for
+both.
 
 ## The loop
 
