@@ -17,7 +17,7 @@ from monitor.config import (
 )
 from monitor.types import OpsLabels
 
-from jeffco.schools import DEFAULT_HS_SCHOOLS, SchoolMatch, parse_school_list
+from jeffco.schools import DEFAULT_HS_SCHOOLS, parse_school_list
 
 #: Written once. It is the log prefix, and `main.py` reads it from here rather than
 #: repeating the string in a print().
@@ -50,29 +50,24 @@ class Profile:
 
     name: str
     labels: OpsLabels
-    #: None means no school filter: every job SFE returns for the account is
-    #: alerted. Set explicitly, never inferred from an empty list -- see load_config.
-    school_match: SchoolMatch | None
-    #: Normalized.
-    built_in_schools: frozenset[str]
+    #: Normalized, matched with the high-school pattern. None means no school
+    #: filter, which is never the same as an empty list -- see load_config.
+    built_in_schools: frozenset[str] | None
     allows_auto_accept: bool
 
 
 DAD = Profile(
     name="dad",
     labels=LABELS,
-    school_match=SchoolMatch.HIGH_SCHOOL,
     built_in_schools=frozenset(_DEFAULT_HS_SCHOOLS_NORMALIZED),
     allows_auto_accept=True,
 )
 
-#: No school filter. Her SFE account settings already decide which jobs reach
-#: her feed, so every one of them is hers.
+#: No school filter: her SFE account settings decide which jobs reach her feed.
 MOM = Profile(
     name="mom",
     labels=MOM_LABELS,
-    school_match=None,
-    built_in_schools=frozenset(),
+    built_in_schools=None,
     allows_auto_accept=False,
 )
 
@@ -88,8 +83,8 @@ class JeffcoConfig:
     auto_accept_enabled: bool
     #: The profile's built-in list UNION whatever HS_SCHOOLS adds -- see
     #: load_config. Never the configured value alone: there is no way to shrink
-    #: this from the environment.
-    schools: frozenset[str]
+    #: this from the environment. None when the profile has no school filter.
+    schools: frozenset[str] | None
     window_days: int
     #: Not read from the environment -- see load_config.
     timezone: str
@@ -133,8 +128,7 @@ def load_config(env: Env) -> JeffcoConfig:
             f"Config error: AUTO_ACCEPT_ENABLED is not allowed for JEFFCO_PROFILE={profile.name}"
         )
     extra_schools = parse_school_list(env_str(env, "HS_SCHOOLS", ""))
-    # HS_SCHOOLS extends Dad's high-school filter and means nothing to any other.
-    if extra_schools and profile.school_match is not SchoolMatch.HIGH_SCHOOL:
+    if extra_schools and profile.built_in_schools is None:
         raise ConfigError(
             f"Config error: HS_SCHOOLS is not allowed for JEFFCO_PROFILE={profile.name}"
         )
@@ -143,17 +137,14 @@ def load_config(env: Env) -> JeffcoConfig:
     # The realistic edit is "a school got missed, let me add it" -- replace
     # semantics would turn that one-liner into a silent loss of the other 21
     # campuses, invisible until a job at one of them went unalerted.
-    schools = frozenset(profile.built_in_schools | extra_schools)
-    # Both directions are refused. A filtering profile with no schools alerts on
-    # nothing forever while its heartbeat reads healthy; an unfiltered profile
-    # with schools carries a list that looks like a filter and does nothing.
-    if profile.school_match is None:
-        if schools:
-            raise ConfigError(
-                f"Config error: JEFFCO_PROFILE={profile.name} has no school filter "
-                "but lists schools"
-            )
-    elif not schools:
+    schools = (
+        None
+        if profile.built_in_schools is None
+        else frozenset(profile.built_in_schools | extra_schools)
+    )
+    # An empty list is not "every job" (that is None): it keeps only what the
+    # pattern happens to match, while the heartbeat reads healthy.
+    if schools is not None and not schools:
         raise ConfigError(f"Config error: JEFFCO_PROFILE={profile.name} has no schools")
 
     return JeffcoConfig(

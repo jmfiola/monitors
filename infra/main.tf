@@ -92,8 +92,8 @@ locals {
       var.jeffco_heartbeat_at != "" ? { HEARTBEAT_AT = var.jeffco_heartbeat_at } : {},
     )
 
-    # Mom's instance of the same image. The profile, not this map, decides her
-    # schools; AUTO_ACCEPT_ENABLED is spelled out because her profile refuses to
+    # Mom's instance of the same image. Her profile has no school filter;
+    # AUTO_ACCEPT_ENABLED is spelled out because her profile refuses to
     # start on true. Ops messages share Dad's status channel, so the one status
     # webhook is reused rather than copied into a second secret.
     "jeffco-mom" = merge(

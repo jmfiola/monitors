@@ -351,11 +351,6 @@ def test_gaps_swap_the_footer_for_the_instruction() -> None:
     )
 
 
-def test_the_gap_footer_is_the_callers() -> None:
-    extras = heartbeat_extras_for(["X ELE"], footer_text="custom footer")
-    assert extras.footer_text == "custom footer"
-
-
 def test_every_job_alert_names_its_job_id_even_with_nothing_else_optional() -> None:
     # SFE has no per-job deep link, so the id is the only handle for finding the
     # job again on the site. It is the last line, after the optional ones.

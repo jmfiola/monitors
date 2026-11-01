@@ -17,9 +17,6 @@ account holder works at as a bare "JEFFERSON ACADEMY", which matches neither
 "JEFFERSON ACADEMY SENIOR" nor the pattern — so his jobs there were filtered out
 and appeared only in the heartbeat's gap report. It is listed under the spelling
 the API actually sends, because that is the string the filter compares.
-
-Mom's profile does not come through here at all: it has no school filter, and
-every job SFE returns for her account is hers (see jeffco.config.MOM).
 """
 
 from __future__ import annotations
@@ -27,7 +24,6 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
-from enum import StrEnum
 
 from jeffco.types import Job
 
@@ -57,16 +53,6 @@ DEFAULT_HS_SCHOOLS: tuple[str, ...] = (
     "JEFFERSON ACADEMY",
 )
 
-
-class SchoolMatch(StrEnum):
-    """How a profile decides that a location is one of its schools."""
-
-    #: The list UNION the high-school pattern -- see `is_high_school`.
-    HIGH_SCHOOL = "high-school"
-    #: The list alone. No pattern can stand in for a named set of campuses.
-    NAMED = "named"
-
-
 #: Longest-first so "SENIOR HIGH SCHOOL" folds in one step rather than leaving a
 #: stray SENIOR behind. Both sides of every comparison run through the same
 #: folds, so the exact order only has to be deterministic, not canonical.
@@ -76,11 +62,6 @@ _FOLDS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bSENIOR HIGH\b"), "HS"),
     (re.compile(r"\bSR HIGH\b"), "HS"),
     (re.compile(r"\bHIGH SCHOOL\b"), "HS"),
-    # SFE abbreviates elementary campuses to ELE; a spelled-out name must land on
-    # the same token. ELE is not an HS_PATTERN token, so this never makes a match
-    # for the high-school filter.
-    (re.compile(r"\bELEMENTARY SCHOOL\b"), "ELE"),
-    (re.compile(r"\bELEMENTARY\b"), "ELE"),
 )
 
 #: JUNIOR HIGH deliberately does not fold and bare JR is deliberately not a
@@ -128,30 +109,19 @@ def is_high_school(raw_name: str, allow: AbstractSet[str]) -> bool:
     return name in allow or _HS_PATTERN.search(name) is not None
 
 
-def matches_school(raw_name: str, allow: AbstractSet[str], match: SchoolMatch) -> bool:
-    """Whether a location is one of the profile's schools, by that profile's rule."""
-    if match is SchoolMatch.HIGH_SCHOOL:
-        return is_high_school(raw_name, allow)
-    return normalize_school_name(raw_name) in allow
-
-
-def partition_jobs(
-    jobs: Sequence[Job],
-    allow: AbstractSet[str],
-    match: SchoolMatch = SchoolMatch.HIGH_SCHOOL,
-) -> tuple[list[Job], list[str]]:
-    """Split jobs into the profile's schools and the distinct names that matched nothing.
+def partition_jobs(jobs: Sequence[Job], allow: AbstractSet[str]) -> tuple[list[Job], list[str]]:
+    """Split jobs into the High School ones and the distinct names that matched nothing.
 
     The unmatched list is the gap report: it is how a school whose name says
     nothing about grade level (DORAL ACADEMY, WARREN TECH) gets discovered instead
     of silently missed. Raw spellings are returned so they can be pasted into
     DEFAULT_HS_SCHOOLS verbatim.
     """
-    kept: list[Job] = []
+    hs: list[Job] = []
     unmatched: set[str] = set()
     for j in jobs:
-        if matches_school(j.location_name, allow, match):
-            kept.append(j)
+        if is_high_school(j.location_name, allow):
+            hs.append(j)
         else:
             unmatched.add(j.location_name)
-    return kept, sorted(unmatched)
+    return hs, sorted(unmatched)

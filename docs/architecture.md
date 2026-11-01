@@ -26,7 +26,7 @@ lib/monitor/src/monitor/
 apps/melanzana/src/melanzana/     apps/jeffco/src/jeffco/
 ├── types.py                      ├── types.py     Job, JobDay
 ├── cowlendar.py  source client   ├── sfe.py       source client + auth
-├── detector.py   month + slot    ├── schools.py   the school filters
+├── detector.py   month + slot    ├── schools.py   the school filter 
 │                 selection       ├── auto_accept.py eligibility, visibility,
 │                                 │                retries, and outcomes
 │                                 ├── dates.py     day/time labels
@@ -133,16 +133,9 @@ Neither profile filters on subject. The available-jobs endpoint already returns
 only jobs the account holder is qualified and assigned for, which is where each
 substitute's job types are chosen.
 
-Mom's profile has no school filter: `school_match` is `None`, so `fetch` returns
-every job SFE lists for her account and never calls `partition_jobs`. Which jobs
-reach her feed is decided by her SFE account settings, not by this monitor. With
-nothing unmatched she has no `filter gap:` log lines and no gap report, so her
-heartbeat carries the library's default footer. Her startup line reads
-`schools=unfiltered`.
-
-"No filter" is the explicit `None`, never an empty list. An empty list under a
-filter matches nothing, so `load_config` refuses a filtering profile with no schools
-and an unfiltered profile that lists any. The `mom` profile also refuses
+Mom's profile has no school filter (`built_in_schools=None`): her SFE account
+settings decide her feed, and every job in it alerts. An empty list is refused at
+startup rather than read as "every job". The `mom` profile also refuses
 `AUTO_ACCEPT_ENABLED=true` and a non-empty `HS_SCHOOLS` (Dad's additive knob, which
 would otherwise read as working). Missing or unknown `JEFFCO_PROFILE` is refused for
 both.

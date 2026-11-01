@@ -34,9 +34,9 @@ Mom's Jeffco instance is the `jeffco-mom` key: unit and container
 `jeffco-mom-monitor`, state at `/var/lib/jeffco-mom-data/state.json`, and env file
 `/etc/monitors/jeffco-mom.env`. Its entry sets `repository = "jeffco"`, so it pulls
 the same `jeffco-sub-monitor` image as Dad's instance and needs no push of its own;
-`JEFFCO_PROFILE=mom` in its env selects her unfiltered profile, so every job in her
-feed alerts, and refuses auto-accept. Its
-job alerts go to her own webhook and its ops messages to Jeffco's status webhook.
+`JEFFCO_PROFILE=mom` in its env alerts every job in her feed and refuses
+auto-accept. Its job alerts go to her own webhook and its ops messages to Jeffco's
+status webhook.
 
 ## Supervision: systemd, not konlet
 

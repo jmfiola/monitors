@@ -172,9 +172,8 @@ async def test_fetch_records_gaps_that_reach_the_heartbeat() -> None:
 
 
 async def test_mom_fetch_keeps_every_job_in_her_feed() -> None:
-    # Her SFE account settings decide what reaches her feed, so nothing here is
-    # filtered: not the high school Dad's pattern would keep, not the elementary
-    # campuses outside the list she once had, not a school no list ever named.
+    # Unfiltered: elementary campuses, a high school and an unknown campus all
+    # come through.
     rows = [
         _job(1, "FAIRMOUNT ELE"),
         _job(2, "RALSTON VALLEY HS"),

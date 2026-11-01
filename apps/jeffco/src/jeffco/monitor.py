@@ -59,12 +59,11 @@ class JeffcoMonitor:
         cadence instead of escalating backoff -- see jeffco.sfe.is_account_busy for
         why an SFE 400 here means "the account holder is on the site", not a fault.
 
-        Mom's profile has no school filter, so every job is returned and nothing
-        is ever unmatched. For a filtering profile (Dad's high-school list and
-        pattern), only matching keys ever enter state: `partition_jobs` splits the
-        raw list here and only the matching half is returned, so an excluded
-        job's id can never be banked as "seen" and cannot be resurrected as "new"
-        by a later edit to the school list. The unmatched half is absorbed into
+        A profile with no school filter gets every job. Otherwise only matching
+        keys ever enter state: `partition_jobs` splits the raw list here and only
+        the matching half is returned, so an excluded job's id is never banked as
+        "seen", and widening the filter later alerts it as new. The unmatched half
+        is absorbed into
         `_unmatched_seen` for the heartbeat's gap report, logging each name only
         the first time it is seen.
         """
@@ -75,11 +74,10 @@ class JeffcoMonitor:
                 raise SourceBusy(str(err)) from err
             raise
 
-        match = self._cfg.profile.school_match
-        if match is None:
+        if self._cfg.schools is None:
             kept, unmatched = list(jobs), list[str]()
         else:
-            kept, unmatched = partition_jobs(jobs, self._cfg.schools, match)
+            kept, unmatched = partition_jobs(jobs, self._cfg.schools)
         for name in unmatched:
             if name in self._unmatched_seen:
                 continue

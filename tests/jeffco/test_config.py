@@ -21,7 +21,7 @@ import pytest
 from jeffco import config
 from jeffco.config import DAD, LABELS, MOM, MOM_LABELS, load_config
 from jeffco.main import config_summary
-from jeffco.schools import DEFAULT_HS_SCHOOLS, SchoolMatch
+from jeffco.schools import DEFAULT_HS_SCHOOLS
 from monitor.config import ConfigError
 
 WEBHOOK = "https://discord.test/webhook"
@@ -32,6 +32,12 @@ BASE = {
     "DISCORD_WEBHOOK_URL": WEBHOOK,
 }
 MOM_ENV = {**BASE, "JEFFCO_PROFILE": "mom"}
+
+
+def _dad_schools(env: dict[str, str]) -> frozenset[str]:
+    schools = load_config(env).schools
+    assert schools is not None
+    return schools
 
 
 def test_auto_accept_is_disabled_by_default() -> None:
@@ -85,11 +91,11 @@ def test_the_pin_and_id_are_required() -> None:
 
 
 def test_ships_the_built_in_school_list_normalized() -> None:
-    cfg = load_config(BASE)
-    assert len(cfg.schools) == len(DEFAULT_HS_SCHOOLS)
-    assert "RALSTON VALLEY HS" in cfg.schools
+    schools = _dad_schools(BASE)
+    assert len(schools) == len(DEFAULT_HS_SCHOOLS)
+    assert "RALSTON VALLEY HS" in schools
     # "WHEAT RIDGE HIGH SCHOOL" is stored folded.
-    assert "WHEAT RIDGE HS" in cfg.schools
+    assert "WHEAT RIDGE HS" in schools
 
 
 def test_hs_schools_is_additive_never_replacing() -> None:
@@ -103,20 +109,19 @@ def test_hs_schools_is_additive_never_replacing() -> None:
     # nothing. That case belongs to the double-count test below instead; this one
     # uses a genuinely new name, matching jeffco-sub-monitor/test/config.test.ts's
     # own "adds to the built-in list rather than replacing it".
-    cfg = load_config({**BASE, "HS_SCHOOLS": "Somewhere New High School"})
-    assert "SOMEWHERE NEW HS" in cfg.schools
-    assert "RALSTON VALLEY HS" in cfg.schools
-    assert len(cfg.schools) == len(DEFAULT_HS_SCHOOLS) + 1
+    schools = _dad_schools({**BASE, "HS_SCHOOLS": "Somewhere New High School"})
+    assert "SOMEWHERE NEW HS" in schools
+    assert "RALSTON VALLEY HS" in schools
+    assert len(schools) == len(DEFAULT_HS_SCHOOLS) + 1
 
 
 def test_hs_schools_is_a_noop_when_empty() -> None:
-    cfg = load_config({**BASE, "HS_SCHOOLS": ""})
-    assert len(cfg.schools) == len(DEFAULT_HS_SCHOOLS)
+    assert len(_dad_schools({**BASE, "HS_SCHOOLS": ""})) == len(DEFAULT_HS_SCHOOLS)
 
 
 def test_hs_schools_does_not_double_count_an_existing_school() -> None:
-    cfg = load_config({**BASE, "HS_SCHOOLS": "Ralston Valley High School"})
-    assert len(cfg.schools) == len(DEFAULT_HS_SCHOOLS)
+    schools = _dad_schools({**BASE, "HS_SCHOOLS": "Ralston Valley High School"})
+    assert len(schools) == len(DEFAULT_HS_SCHOOLS)
 
 
 def test_the_poll_interval_defaults_to_forty_five_not_ten() -> None:
@@ -160,15 +165,13 @@ def test_an_unknown_or_miscased_profile_is_refused(raw: str) -> None:
 def test_dad_profile_keeps_the_high_school_filter_and_labels() -> None:
     cfg = load_config(BASE)
     assert cfg.profile is DAD
-    assert cfg.profile.school_match is SchoolMatch.HIGH_SCHOOL
     assert cfg.runner.labels is LABELS
 
 
 def test_mom_profile_has_no_school_filter_and_her_labels() -> None:
     cfg = load_config(MOM_ENV)
     assert cfg.profile is MOM
-    assert cfg.profile.school_match is None
-    assert cfg.schools == frozenset()
+    assert cfg.schools is None
     assert cfg.runner.labels is MOM_LABELS
     assert MOM_LABELS.name == "Jeffco sub monitor (Mom)"
     assert MOM_LABELS.tracked_noun == "job(s) in Mom's feed"
@@ -196,28 +199,16 @@ def test_mom_profile_refuses_hs_schools() -> None:
 
 @pytest.mark.parametrize("raw", ["", ";", " \n "])
 def test_mom_profile_tolerates_a_blank_hs_schools(raw: str) -> None:
-    assert load_config({**MOM_ENV, "HS_SCHOOLS": raw}).schools == frozenset()
+    assert load_config({**MOM_ENV, "HS_SCHOOLS": raw}).schools is None
 
 
 def test_a_filtering_profile_with_no_schools_refuses_to_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # An empty list under a filter alerts on nothing forever. It is never a way
-    # to mean "every job" -- that is school_match=None, set explicitly.
+    # An empty list is never "every job" -- that is built_in_schools=None.
     monkeypatch.setitem(config.PROFILES, "dad", replace(DAD, built_in_schools=frozenset()))
     with pytest.raises(ConfigError, match="JEFFCO_PROFILE=dad has no schools"):
         load_config(BASE)
-
-
-def test_an_unfiltered_profile_with_schools_refuses_to_start(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # A list on an unfiltered profile would read as a filter while doing nothing.
-    monkeypatch.setitem(
-        config.PROFILES, "mom", replace(MOM, built_in_schools=frozenset({"FAIRMOUNT ELE"}))
-    )
-    with pytest.raises(ConfigError, match="JEFFCO_PROFILE=mom has no school filter but lists"):
-        load_config(MOM_ENV)
 
 
 def test_dad_config_summary_counts_his_schools() -> None:

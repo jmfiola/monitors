@@ -115,8 +115,8 @@ the same URL. Batching therefore displayed one job and silently discarded the re
 while state recorded all of them as announced. Verified against a real webhook.
 
 There is deliberately no message cap either. Dropping a job is the one failure that costs
-something real, and the only batch large enough to matter comes from a deliberate
-`echo '[]' > state.json`.
+something real, and the only batches large enough to matter are deliberate:
+`echo '[]' > state.json`, or the backlog after a school filter is widened.
 
 - `test_gives_every_job_its_own_message_never_two_embeds_in_one`
 
@@ -299,7 +299,7 @@ and runner know only about item keys and messages; no action state belongs there
 
 ## 14a. A Jeffco profile is required, and "no filter" is explicit
 
-`apps/jeffco/src/jeffco/config.py` / `monitor.py` / `main.py`
+`apps/jeffco/src/jeffco/config.py` / `monitor.py`
 
 `JEFFCO_PROFILE` has no default. **The tempting simplification is to default to
 `dad`.** On Mom's instance a forgotten variable would then run Dad's high-school
@@ -307,12 +307,10 @@ filter against her feed: almost no alerts, a healthy heartbeat, and nothing to s
 why. A missing, miscased, or padded value is refused at startup instead.
 
 The `mom` profile has no school filter: every job in her feed alerts. **The tempting
-way to express that is an empty school list.** Under a filter an empty list matches
-nothing, so the same edit that means "everything" would alert on nothing forever
-while the heartbeat reads healthy. "No filter" is `school_match=None`, set in code,
-and `load_config` refuses both mismatches: a filtering profile with no schools, and
-an unfiltered profile that lists schools (a list there looks like a filter and does
-nothing). The startup line says `schools=unfiltered` rather than `schools=0`.
+way to express that is an empty school list.** Under the high-school filter an empty
+list keeps only what the pattern matches, almost nothing in Mom's feed, while the
+heartbeat reads healthy. "No filter" is `built_in_schools=None`, and an empty list
+is refused at startup.
 
 Each `mom` refusal is loud because the quiet version reads as working:
 `AUTO_ACCEPT_ENABLED=true` would look enabled while doing nothing, and a non-empty
@@ -323,9 +321,7 @@ Each `mom` refusal is loud because the quiet version reads as working:
 - `test_mom_profile_refuses_auto_accept`
 - `test_mom_profile_refuses_hs_schools`
 - `test_a_filtering_profile_with_no_schools_refuses_to_start`
-- `test_an_unfiltered_profile_with_schools_refuses_to_start`
 - `test_mom_fetch_keeps_every_job_in_her_feed`
-- `test_mom_config_summary_says_she_is_unfiltered`
 
 ## 15. FashionJobs' product filter is fixed and proven from every HTML page
 

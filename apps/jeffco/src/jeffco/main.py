@@ -31,11 +31,9 @@ def config_summary(cfg: JeffcoConfig) -> str:
     Deliberately excludes sfe_user_id: this account's PIN closely resembles its
     access id, so printing the id would leak most of the PIN's shape into logs
     that are not a secret store. `len(cfg.schools)`, not the schools themselves
-    -- the list is long and not worth a log line of its own. A profile with no
-    school filter says so in words, never as `schools=0`, which would read as a
-    filter that matches nothing.
+    -- the list is long and not worth a log line of its own.
     """
-    schools = "unfiltered" if cfg.profile.school_match is None else str(len(cfg.schools))
+    schools = "unfiltered" if cfg.schools is None else str(len(cfg.schools))
     auto_accept_state = "enabled" if cfg.auto_accept_enabled else "disabled"
     return (
         f"app config — profile={cfg.profile.name} window={cfg.window_days}d tz={cfg.timezone} "
