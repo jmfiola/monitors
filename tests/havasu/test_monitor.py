@@ -5,11 +5,12 @@ from havasu.config import load_config
 from havasu.monitor import HavasuMonitor
 from havasu.types import OpenArrival
 
-from tests.havasu.test_newbook import FakeNewBook
+from tests.havasu.helpers import FakeNewBook
 
 WEBHOOK = "https://discord.test/webhook"
-#: 2026-11-16 12:00 America/Phoenix.
-NOW = 1794855600
+#: 2026-11-17 02:00 UTC, which is still Nov 16 (19:00) in America/Phoenix — so a
+#: UTC "today" would wrongly drop the Nov 16 arrival.
+NOW = 1794880800
 
 
 def make_monitor(fake: FakeNewBook, **env: str) -> tuple[HavasuMonitor, httpx.AsyncClient]:
@@ -26,7 +27,6 @@ async def test_fetch_returns_watched_open_arrivals() -> None:
         items = await monitor.fetch()
 
     assert [i.arrival for i in items] == [date(2026, 11, d) for d in range(16, 28)]
-    assert fake.forms[0]["available_from"] == ["Nov 16 2026"]
 
 
 def test_the_key_is_the_arrival_date() -> None:

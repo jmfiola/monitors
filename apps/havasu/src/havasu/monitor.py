@@ -45,9 +45,7 @@ class HavasuMonitor:
         """
         today = datetime.fromtimestamp(self._now_unix(), SITE_TZ).date()
         first, last = query_window(self._cfg.watch_ranges, today)
-        days = await self._source.fetch_calendar(
-            first, last, available_from=max(today, first.first_day())
-        )
+        days = await self._source.fetch_calendar(first, last)
         return open_arrivals(days, self._cfg.watch_ranges, today)
 
     def key(self, item: OpenArrival) -> str:

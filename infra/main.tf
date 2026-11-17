@@ -128,12 +128,11 @@ locals {
       {
         DISCORD_WEBHOOK_URL    = var.havasu_discord_webhook_url
         STATE_PATH             = "/data/state.json"
-        WATCH_RANGES           = var.havasu_watch_ranges
-        POLL_INTERVAL_SEC      = tostring(var.havasu_poll_interval_sec)
         HEARTBEAT_INTERVAL_SEC = tostring(var.heartbeat_interval_sec)
         STALL_ALERT_SEC        = tostring(var.stall_alert_sec)
       },
       var.havasu_status_webhook_url != "" ? { STATUS_WEBHOOK_URL = var.havasu_status_webhook_url } : {},
+      var.havasu_watch_ranges != "" ? { WATCH_RANGES = var.havasu_watch_ranges } : {},
       var.havasu_heartbeat_at != "" ? { HEARTBEAT_AT = var.havasu_heartbeat_at } : {},
     )
   }

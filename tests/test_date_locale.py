@@ -1,7 +1,9 @@
 import locale
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
+from havasu.alert import format_alert as format_havasu_alert
+from havasu.types import OpenArrival
 from jeffco.dates import format_day_label, format_time_label
 from melanzana.alert import format_alert
 from melanzana.types import Slot
@@ -27,5 +29,15 @@ def test_explicit_date_tables_ignore_lc_time_when_strftime_does_not(locale_name:
         fields = payload.embeds[0].fields
         assert fields is not None
         assert fields[0].name == "📅 Fri, Oct 16"
+
+        havasu = format_havasu_alert(
+            [OpenArrival(date(2026, 10, 16))], booking_url="https://x.test"
+        )
+        havasu_fields = havasu.embeds[0].fields
+        assert havasu_fields is not None
+        assert (havasu_fields[0].name, havasu_fields[0].value) == (
+            "📅 Fri, Oct 16, 2026",
+            "out Mon, Oct 19",
+        )
     finally:
         locale.setlocale(locale.LC_TIME, previous)

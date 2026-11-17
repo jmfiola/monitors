@@ -20,7 +20,7 @@ def test_defaults_are_the_production_watch_ranges_at_10s() -> None:
 
 
 def test_all_watches_every_date() -> None:
-    cfg = load_config({"DISCORD_WEBHOOK_URL": WEBHOOK, "WATCH_RANGES": "ALL"})
+    cfg = load_config({"DISCORD_WEBHOOK_URL": WEBHOOK, "WATCH_RANGES": "all"})
     assert cfg.watch_ranges is None
     assert describe_ranges(cfg.watch_ranges) == "all dates"
 
@@ -42,13 +42,9 @@ def test_ranges_are_sorted_and_described() -> None:
         ("2027-05-08..2027-05-32", "must be YYYY-MM-DD"),
         ("2027-05-08..2027-05-31,", "must be YYYY-MM-DD"),
         ("2027-05-31..2027-05-08", "ends before it starts"),
+        ("ALL", "must be YYYY-MM-DD"),
     ],
 )
 def test_bad_ranges_fail_at_startup(raw: str, match: str) -> None:
     with pytest.raises(ConfigError, match=match):
         load_config({"DISCORD_WEBHOOK_URL": WEBHOOK, "WATCH_RANGES": raw})
-
-
-def test_the_webhook_is_required() -> None:
-    with pytest.raises(ConfigError, match="DISCORD_WEBHOOK_URL is required"):
-        load_config({})

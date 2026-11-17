@@ -7,7 +7,7 @@ from datetime import date
 
 from monitor.types import GREEN, Embed, Field, Payload
 
-from havasu.types import OpenArrival
+from havasu.types import MONTHS, WEEKDAYS, OpenArrival
 
 #: Discord allows 25 embed fields; one is reserved for the overflow note. Sale day
 #: opens every watched date at once, so the overflow path is a real one.
@@ -17,7 +17,7 @@ FOOTER = "One permit per person — add each with “Add Booking”, then check 
 
 
 def _day(d: date) -> str:
-    return f"{d:%a}, {d:%b} {d.day}"
+    return f"{WEEKDAYS[d.weekday()]}, {MONTHS[d.month - 1]} {d.day}"
 
 
 def format_alert(arrivals: Sequence[OpenArrival], *, booking_url: str) -> Payload:

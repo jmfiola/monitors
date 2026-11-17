@@ -29,15 +29,6 @@ def query_window(ranges: Sequence[WatchRange] | None, today: date) -> tuple[Year
     return YearMonth.of(first), YearMonth.of(last)
 
 
-def months_between(first: YearMonth, last: YearMonth) -> list[YearMonth]:
-    out: list[YearMonth] = []
-    month = first
-    while month <= last:
-        out.append(month)
-        month = month.next()
-    return out
-
-
 def is_open_arrival(days: Mapping[date, DayState], arrival: date) -> bool:
     """Nights D, D+1, D+2 all available, arrivals allowed on D, departures on D+3.
 
@@ -47,7 +38,7 @@ def is_open_arrival(days: Mapping[date, DayState], arrival: date) -> bool:
     nights = [days.get(arrival + timedelta(days=i)) for i in range(NIGHTS)]
     if any(night is None or not night.available for night in nights):
         return False
-    if nights[0] is not None and nights[0].closed_arrival:
+    if days[arrival].closed_arrival:
         return False
     departure = days.get(arrival + timedelta(days=NIGHTS))
     return not (departure is not None and departure.closed_departure)

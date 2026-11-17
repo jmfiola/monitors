@@ -9,6 +9,11 @@ from datetime import date, timedelta
 #: no other length.
 NIGHTS = 3
 
+#: Explicit tables, not `strftime`: `%a`/`%b` follow the host locale (invariant 13).
+#: Indexed by `date.weekday()` (Monday=0) and `month - 1`.
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
 
 @dataclass(frozen=True, order=True)
 class YearMonth:
@@ -25,6 +30,15 @@ class YearMonth:
             if self.month == 12
             else YearMonth(self.year, self.month + 1)
         )
+
+    def through(self, last: YearMonth) -> list[YearMonth]:
+        """Every month from this one to `last`, inclusive."""
+        out: list[YearMonth] = []
+        month = self
+        while month <= last:
+            out.append(month)
+            month = month.next()
+        return out
 
     def first_day(self) -> date:
         return date(self.year, self.month, 1)
@@ -47,7 +61,8 @@ class DayState:
 
     #: `available` — at least one campground permit is left for that night.
     available: bool
-    #: `closed_arrival` — no arrivals that day, even when the night is available.
+    #: `closed_arrival` — no arrivals that day. Seen on 2026-12-01, the first
+    #: closed day after the season's last open night.
     closed_arrival: bool = False
     #: `closed_departure` — no departures that day.
     closed_departure: bool = False

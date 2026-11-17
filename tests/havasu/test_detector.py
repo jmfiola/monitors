@@ -4,7 +4,7 @@ from havasu.detector import open_arrivals, query_window
 from havasu.newbook import parse_calendar
 from havasu.types import DayState, OpenArrival, WatchRange, YearMonth
 
-from tests.havasu.helpers import CAL_2026, fixture_json
+from tests.havasu.helpers import CAL_2026, CAL_ALL, fixture_json
 
 TODAY = date(2026, 11, 16)
 PRODUCTION = (
@@ -29,8 +29,11 @@ def test_all_dates_spans_this_month_through_next_december() -> None:
 
 def test_matches_what_the_booking_chart_said_on_2026_11_16() -> None:
     # The chart offered "Book now" for Nov 16 and Nov 28 and no sites for Nov 29
-    # and Nov 30 — their third night or later falls on a closed December.
-    arrivals = [a.arrival for a in open_arrivals(nov_2026(), None, TODAY)]
+    # and Nov 30, whose second or third night is a booked December day. Nov 28
+    # departs on booked Dec 1, which does not block it.
+    # The `all`-mode capture, so December is present and booked rather than absent.
+    days = parse_calendar(fixture_json(CAL_ALL), YearMonth(2026, 11), YearMonth(2027, 12))
+    arrivals = [a.arrival for a in open_arrivals(days, None, TODAY)]
     assert arrivals == [date(2026, 11, d) for d in range(16, 29)]
 
 

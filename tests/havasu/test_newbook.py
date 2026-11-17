@@ -1,13 +1,19 @@
 from datetime import date
 from typing import Any
-from urllib.parse import parse_qs
 
 import httpx
 import pytest
-from havasu.newbook import BOOKING_PAGE, NewBookError, NewBookSource, parse_calendar
+from havasu.newbook import NewBookError, NewBookSource, parse_calendar
 from havasu.types import DayState, YearMonth
 
-from tests.havasu.helpers import API_PATH, CAL_2026, CAL_2027, fixture_json, fixture_text, with_rows
+from tests.havasu.helpers import (
+    CAL_2026,
+    CAL_2027,
+    CAL_ALL,
+    FakeNewBook,
+    fixture_json,
+    with_rows,
+)
 
 MAR, NOV = YearMonth(2026, 3), YearMonth(2026, 11)
 
@@ -29,14 +35,10 @@ def test_a_season_not_yet_on_sale_reads_as_all_booked() -> None:
     assert not any(s.available for s in days.values())
 
 
-def test_closed_arrival_is_a_known_modifier() -> None:
-    payload = fixture_json(CAL_2026)
-    rows = payload["calendar_data"]["table_rows"].replace(
-        'class="day available" data-date="2026-11-20"',
-        'class="day available closed_arrival" data-date="2026-11-20"',
-    )
-    days = parse_calendar(with_rows(payload, rows), MAR, NOV)
-    assert days[date(2026, 11, 20)] == DayState(available=True, closed_arrival=True)
+def test_parses_the_real_closed_arrival_cell() -> None:
+    days = parse_calendar(fixture_json(CAL_ALL), NOV, YearMonth(2027, 12))
+    assert len(days) == 426
+    assert days[date(2026, 12, 1)] == DayState(available=False, closed_arrival=True)
 
 
 @pytest.mark.parametrize(
@@ -93,32 +95,12 @@ def test_a_malformed_payload_is_a_fault(payload: Any) -> None:
         parse_calendar(payload, MAR, NOV)
 
 
-class FakeNewBook:
-    """Serves the booking page and the calendar, recording what was asked."""
-
-    def __init__(self, calendar: httpx.Response | None = None) -> None:
-        self.page_loads = 0
-        self.forms: list[dict[str, list[str]]] = []
-        self.calendar = calendar or httpx.Response(200, json=fixture_json(CAL_2026))
-
-    def __call__(self, request: httpx.Request) -> httpx.Response:
-        if request.method == "GET" and str(request.url) == BOOKING_PAGE:
-            self.page_loads += 1
-            return httpx.Response(
-                200, text=fixture_text("booking-page.html"), headers={"set-cookie": "nb=1"}
-            )
-        assert request.method == "POST"
-        assert str(request.url) == f"{API_PATH}newbook_api_action=data"
-        self.forms.append(parse_qs(request.content.decode()))
-        return self.calendar
-
-
 async def test_bootstraps_once_and_posts_the_calendar_query() -> None:
     fake = FakeNewBook()
     async with httpx.AsyncClient(transport=httpx.MockTransport(fake)) as client:
         source = NewBookSource(client)
-        await source.fetch_calendar(MAR, NOV, available_from=date(2026, 11, 16))
-        await source.fetch_calendar(MAR, NOV, available_from=date(2026, 11, 16))
+        await source.fetch_calendar(MAR, NOV)
+        await source.fetch_calendar(MAR, NOV)
 
     assert fake.page_loads == 1
     form = fake.forms[0]
@@ -127,21 +109,22 @@ async def test_bootstraps_once_and_posts_the_calendar_query() -> None:
     assert form["adults"] == ["1"]
     assert form["nights"] == ["3"]
     assert (form["period_from"], form["period_to"]) == (["2026-03"], ["2026-11"])
-    assert (form["available_from"], form["available_to"]) == (["Nov 16 2026"], ["Nov 19 2026"])
+    assert (form["available_from"], form["available_to"]) == (["Mar 1 2026"], ["Mar 4 2026"])
     assert not any("cart" in v for values in form.values() for v in values)
 
 
-async def test_any_failure_drops_the_session_so_the_next_tick_bootstraps() -> None:
+async def test_any_failure_drops_the_session_and_its_cookie() -> None:
     fake = FakeNewBook(calendar=httpx.Response(200, text="<html>session expired</html>"))
     async with httpx.AsyncClient(transport=httpx.MockTransport(fake)) as client:
         source = NewBookSource(client)
         with pytest.raises(NewBookError, match="not JSON"):
-            await source.fetch_calendar(MAR, NOV, available_from=date(2026, 11, 16))
+            await source.fetch_calendar(MAR, NOV)
         fake.calendar = httpx.Response(503)
         with pytest.raises(NewBookError, match="503"):
-            await source.fetch_calendar(MAR, NOV, available_from=date(2026, 11, 16))
+            await source.fetch_calendar(MAR, NOV)
 
     assert fake.page_loads == 2
+    assert fake.cookies_sent == [None, None]  # the stale cookie is not carried over
 
 
 async def test_a_page_without_the_api_path_is_a_fault() -> None:
@@ -149,4 +132,4 @@ async def test_a_page_without_the_api_path_is_a_fault() -> None:
         transport=httpx.MockTransport(lambda _r: httpx.Response(200, text="<html></html>"))
     ) as client:
         with pytest.raises(NewBookError, match="newbook_api_path"):
-            await NewBookSource(client).fetch_calendar(MAR, NOV, available_from=date(2026, 11, 16))
+            await NewBookSource(client).fetch_calendar(MAR, NOV)

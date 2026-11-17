@@ -25,8 +25,6 @@ LABELS = OpsLabels(
 
 #: Jacob's 2027 arrival windows. A range bounds the arrival date only.
 DEFAULT_WATCH_RANGES = "2027-05-08..2027-05-31,2027-10-01..2027-10-24"
-#: Every date the calendar returns. For testing, not production.
-ALL_DATES = "all"
 
 
 @dataclass(frozen=True)
@@ -38,8 +36,9 @@ class HavasuConfig:
 
 
 def parse_watch_ranges(raw: str) -> tuple[WatchRange, ...] | None:
-    """`all`, or comma-separated inclusive `YYYY-MM-DD..YYYY-MM-DD` arrival ranges."""
-    if raw.strip().lower() == ALL_DATES:
+    """`all` (every date, for testing), or comma-separated inclusive
+    `YYYY-MM-DD..YYYY-MM-DD` arrival ranges."""
+    if raw == "all":
         return None
     ranges: list[WatchRange] = []
     for part in raw.split(","):

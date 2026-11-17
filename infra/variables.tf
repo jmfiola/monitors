@@ -291,31 +291,14 @@ variable "havasu_status_webhook_url" {
   }
 }
 
-# Arrival dates only — a stay may end after its range. "all" watches every date
-# the calendar returns and is for testing; the heartbeat names what is watched,
-# so a test value left on is visible.
+# Arrival dates only; a stay may end after its range. Empty uses the app's own
+# default (the 2027 production ranges), so those dates live in one place. "all"
+# watches every date and is for testing; the heartbeat names what is watched, so a
+# test value left on is visible. The app validates the format at startup.
 variable "havasu_watch_ranges" {
   type        = string
-  description = "Comma-separated YYYY-MM-DD..YYYY-MM-DD arrival ranges, or \"all\"."
-  default     = "2027-05-08..2027-05-31,2027-10-01..2027-10-24"
-
-  validation {
-    condition     = var.havasu_watch_ranges == "all" || can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}\\.\\.[0-9]{4}-[0-9]{2}-[0-9]{2}(,[0-9]{4}-[0-9]{2}-[0-9]{2}\\.\\.[0-9]{4}-[0-9]{2}-[0-9]{2})*$", var.havasu_watch_ranges))
-    error_message = "havasu_watch_ranges must be \"all\" or comma-separated YYYY-MM-DD..YYYY-MM-DD ranges."
-  }
-}
-
-# 10s: one anonymous calendar request per tick, and a released permit is gone in
-# minutes.
-variable "havasu_poll_interval_sec" {
-  type        = number
-  description = "Seconds between NewBook calendar polls."
-  default     = 10
-
-  validation {
-    condition     = var.havasu_poll_interval_sec > 0
-    error_message = "havasu_poll_interval_sec must be positive."
-  }
+  description = "Comma-separated YYYY-MM-DD..YYYY-MM-DD arrival ranges, \"all\", or empty for the app default."
+  default     = ""
 }
 
 variable "havasu_heartbeat_at" {

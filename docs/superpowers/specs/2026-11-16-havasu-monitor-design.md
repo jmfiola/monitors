@@ -39,7 +39,9 @@ needs no account, only the session cookie that the booking page sets.
    The response is JSON. `calendar_data.table_rows` holds HTML table rows with
    one `<td class="day …" data-date="YYYY-MM-DD">` per day, covering every month
    from `period_from` to `period_to`. One request covered nine months during
-   discovery.
+   discovery. `available_from` and `look_up_date` do not change the cells: a live
+   request with both moved to May 2027 returned the same days. Both are sent as
+   the first requested month.
 3. **Per-arrival chart** (discovery only).
    `POST <api_path>newbook_api_action=availability_chart_responsive&force_category_id=1&…`
    returns either `"Book now"` with a price, or "There are currently no Sites
@@ -54,6 +56,7 @@ Observed on 2026-11-16:
 | `day booked` | No permits that night: sold out, out of season, or not yet on sale. All three look identical. |
 | `day available` | At least one permit is left that night. |
 | `closed_departure` (modifier on `available`) | No departures that day. |
+| `closed_arrival` (modifier) | No arrivals that day. Seen on 2026-12-01 (`day booked closed_arrival`), only when the query spans the Nov/Dec boundary. |
 
 Every 2027 date currently shows `day booked`, because the 2027 season is not on
 sale yet. Any class token the parser does not recognize is a fault, not a
@@ -62,7 +65,8 @@ guess.
 ### Arrival rule
 
 A permit is always 3 nights. **Arrival D is open when nights D, D+1 and D+2 are
-all `available`, and day D+3 does not carry `closed_departure`.** Departure-day
+all `available`, D does not carry `closed_arrival`, and D+3 does not carry
+`closed_departure`.** Departure-day
 availability does not matter.
 
 Checked against the per-arrival chart on 2026-11-16:
@@ -139,10 +143,10 @@ which one it was.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `WATCH_RANGES` | `2027-05-08..2027-05-31,2027-10-01..2027-10-24` | Inclusive arrival ranges. `all` means every date the calendar returns, for testing. |
+| `WATCH_RANGES` | `2027-05-08..2027-05-31,2027-10-01..2027-10-24` | Inclusive arrival ranges. Exactly `all` means every date the calendar returns, for testing. The production ranges live only in this app default; Terraform passes the variable only when it is set. |
 | `POLL_INTERVAL_SEC` | `10` | Runner setting. |
 | `BOOKING_URL` | `https://bookingsus.newbook.cloud/online/havasupai` | Link in the alert title. |
-| `ALERT_WEBHOOK_URL` | — | New channel. Secret. |
+| `DISCORD_WEBHOOK_URL` | — | New channel. Secret. |
 
 `all` needs explicit bounds for the calendar query. It covers the current month
 through December of next year.
