@@ -266,6 +266,70 @@ variable "fashionjobs_heartbeat_at" {
 }
 
 ###############################################################################
+# havasu-monitor — Havasupai campground permit openings (NewBook calendar).
+###############################################################################
+variable "havasu_discord_webhook_url" {
+  type        = string
+  description = "Discord webhook for Havasu permit alerts. A credential: anyone holding it can post."
+  sensitive   = true
+
+  validation {
+    condition     = can(regex("^https://[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+(:[0-9]{1,5})?(/[^[:space:]]*)?$", var.havasu_discord_webhook_url))
+    error_message = "havasu_discord_webhook_url must be an https:// URL."
+  }
+}
+
+variable "havasu_status_webhook_url" {
+  type        = string
+  description = "Optional separate Discord webhook for Havasu ops messages. Empty = use the alert channel."
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = var.havasu_status_webhook_url == "" || can(regex("^https://[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+(:[0-9]{1,5})?(/[^[:space:]]*)?$", var.havasu_status_webhook_url))
+    error_message = "havasu_status_webhook_url must be empty or an https:// URL."
+  }
+}
+
+# Arrival dates only — a stay may end after its range. "all" watches every date
+# the calendar returns and is for testing; the heartbeat names what is watched,
+# so a test value left on is visible.
+variable "havasu_watch_ranges" {
+  type        = string
+  description = "Comma-separated YYYY-MM-DD..YYYY-MM-DD arrival ranges, or \"all\"."
+  default     = "2027-05-08..2027-05-31,2027-10-01..2027-10-24"
+
+  validation {
+    condition     = var.havasu_watch_ranges == "all" || can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}\\.\\.[0-9]{4}-[0-9]{2}-[0-9]{2}(,[0-9]{4}-[0-9]{2}-[0-9]{2}\\.\\.[0-9]{4}-[0-9]{2}-[0-9]{2})*$", var.havasu_watch_ranges))
+    error_message = "havasu_watch_ranges must be \"all\" or comma-separated YYYY-MM-DD..YYYY-MM-DD ranges."
+  }
+}
+
+# 10s: one anonymous calendar request per tick, and a released permit is gone in
+# minutes.
+variable "havasu_poll_interval_sec" {
+  type        = number
+  description = "Seconds between NewBook calendar polls."
+  default     = 10
+
+  validation {
+    condition     = var.havasu_poll_interval_sec > 0
+    error_message = "havasu_poll_interval_sec must be positive."
+  }
+}
+
+variable "havasu_heartbeat_at" {
+  type        = string
+  description = "HH:MM America/Denver time for Havasu's daily heartbeat. Empty = use HEARTBEAT_INTERVAL_SEC."
+  default     = "07:00"
+
+  validation {
+    condition     = var.havasu_heartbeat_at == "" || can(regex("^([01][0-9]|2[0-3]):[0-5][0-9]$", var.havasu_heartbeat_at))
+    error_message = "havasu_heartbeat_at must be empty or an HH:MM 24-hour time."
+  }
+}
+
+###############################################################################
 # Shared ops config. Applied to every app; the library reads the same names.
 ###############################################################################
 variable "heartbeat_interval_sec" {

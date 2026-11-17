@@ -11,6 +11,10 @@
 # auto-accept-capable image, verify health, then enable in a separate deployment.
 jeffco_auto_accept_enabled = true
 
+# Testing: every date, so the open late-2026 dates exercise a real alert. Remove
+# this line to fall back to the production 2027 ranges in variables.tf.
+havasu_watch_ranges = "all"
+
 apps = {
   melanzana = {
     image     = "melanzana-monitor"
@@ -38,6 +42,12 @@ apps = {
   fashionjobs = {
     image     = "fashionjobs-monitor"
     image_tag = "v2.7.0"
+    memory    = "128m"
+  }
+
+  havasu = {
+    image     = "havasu-monitor"
+    image_tag = "v2.8.0"
     memory    = "128m"
   }
 }
