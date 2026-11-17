@@ -127,11 +127,13 @@ Each of these raises, so the runner backs off and leaves the baseline alone:
 
 - The API path is missing from the bootstrap page.
 - The response is not JSON, or has no `table_rows`.
-- A requested month has no cells.
+- A non-200 response, or an echoed period that differs from the request.
+- Any day of a requested month is missing or repeated.
 - A cell has an unknown class token or an unparseable date.
 
-An HTTP 401, 403 or 419, or a bootstrap-shaped HTML response, also clears the
-session so the next tick bootstraps again.
+Any fault also clears the session, so the next tick bootstraps again. That one
+rule covers an expired cookie, a rotated API path and an outage without guessing
+which one it was.
 
 ### Configuration
 
